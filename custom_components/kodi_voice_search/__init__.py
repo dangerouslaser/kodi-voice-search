@@ -315,27 +315,38 @@ async def _navigate_to_content(
 ) -> bool:
     """Navigate Kodi to a specific content page."""
     if content_type == "tvshow":
+        # TV shows use standard GUI.ActivateWindow
         path = f"videodb://tvshows/titles/{content_id}/"
-        window = "videos"
+        _LOGGER.debug("Navigating to TV show: %s", path)
+
+        result = await _kodi_request(
+            config,
+            "GUI.ActivateWindow",
+            {"window": "videos", "parameters": [path]}
+        )
+        success = result is not None
+        _LOGGER.debug("Navigation result: %s (success=%s)", result, success)
+        return success
+
     elif content_type == "movie":
-        # Movies use the Video info dialog (window 12003)
+        # Movies use our addon to open Video info dialog (12003)
+        # GUI.ActivateWindow doesn't accept numeric window IDs
         path = f"videodb://movies/{content_id}/"
-        window = "12003"
-    else:
-        return False
+        _LOGGER.debug("Opening movie info for movie ID %s with path: %s", content_id, path)
 
-    _LOGGER.debug("Navigating to window %s with path: %s", window, path)
+        result = await _kodi_request(
+            config,
+            "Addons.ExecuteAddon",
+            {
+                "addonid": KODI_ADDON_ID,
+                "params": f"window=12003&path={path}"
+            }
+        )
+        success = result is not None
+        _LOGGER.debug("Addon result: %s (success=%s)", result, success)
+        return success
 
-    result = await _kodi_request(
-        config,
-        "GUI.ActivateWindow",
-        {"window": window, "parameters": [path]}
-    )
-
-    # GUI.ActivateWindow returns empty string "" on success
-    success = result is not None
-    _LOGGER.debug("Navigation result: %s (success=%s)", result, success)
-    return success
+    return False
 
 
 async def _execute_pull_up(

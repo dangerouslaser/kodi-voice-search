@@ -35,7 +35,7 @@ KODI_ADDON_PATH = "/storage/.kodi/addons/script.openwindow"
 
 # Addon file contents
 ADDON_XML = '''<?xml version="1.0" encoding="UTF-8"?>
-<addon id="script.openwindow" name="Open Window" version="1.0.0" provider-name="kodi-voice-search">
+<addon id="script.openwindow" name="Open Window" version="1.1.0" provider-name="kodi-voice-search">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
   </requires>
@@ -53,6 +53,7 @@ import xbmc
 
 window_id = None
 search_term = None
+path = None
 
 all_params = '&'.join(sys.argv[1:]).split('&')
 
@@ -63,10 +64,15 @@ for arg in all_params:
             window_id = value
         elif key == 'search':
             search_term = value
+        elif key == 'path':
+            path = value
 
 if search_term:
     xbmc.executebuiltin(f'SetProperty(CustomSearchTerm,{search_term},Home)')
 
 if window_id:
-    xbmc.executebuiltin(f'ActivateWindow({window_id})')
+    if path:
+        xbmc.executebuiltin(f'ActivateWindow({window_id},{path})')
+    else:
+        xbmc.executebuiltin(f'ActivateWindow({window_id})')
 '''
