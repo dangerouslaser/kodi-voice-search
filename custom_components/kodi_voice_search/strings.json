@@ -54,6 +54,13 @@
       "addon_not_detected": {
         "title": "Addon Not Detected",
         "description": "The addon files were installed and Kodi was restarted, but the addon wasn't detected.\n\nThis sometimes happens if Kodi needs another restart. Try restarting Kodi manually:\n```\nsystemctl restart kodi\n```\n\nClick Submit to complete setup."
+      },
+      "pipeline": {
+        "title": "Voice Assistant Pipeline",
+        "description": "Select which Voice Assistant pipeline should route searches to this Kodi instance.\n\nThis is useful if you have multiple Kodi devices - each can be assigned to a different Voice Assistant profile.\n\nSelect \"None\" to make this the default Kodi for all unmatched pipelines.",
+        "data": {
+          "pipeline_id": "Voice Assistant Pipeline"
+        }
       }
     },
     "error": {

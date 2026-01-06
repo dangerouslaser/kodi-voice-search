@@ -230,6 +230,41 @@ curl -X POST \
 | Arctic Fuse 2 | 11185 |
 | Arctic Fuse 2 (Discover) | 11105 |
 
+## Multiple Kodi Devices
+
+If you have multiple Kodi devices in different rooms, you can configure each one to respond to a specific Voice Assistant pipeline.
+
+### How It Works
+
+1. **Create multiple Voice Assistant pipelines** in Home Assistant (Settings → Voice Assistants)
+   - Example: "Living Room Voice", "Bedroom Voice"
+
+2. **Add each Kodi device** as a separate integration instance
+   - Go to Settings → Devices & Services → Add Integration → Kodi Voice Search
+   - During setup, select which Voice Assistant pipeline should route to this Kodi
+
+3. **Configure your UC Remote 3 activities** to use different pipelines
+   - Each activity can be assigned a different Voice Assistant profile
+   - Voice commands will route to the Kodi matched to that pipeline
+
+### Routing Logic
+
+- If a voice command comes from a pipeline that matches a configured Kodi, it routes there
+- If no match is found, it routes to a Kodi with no pipeline assigned (default)
+- If no default exists, it routes to the first configured Kodi
+
+### Example Setup
+
+| Kodi Device | Voice Assistant Pipeline |
+|-------------|-------------------------|
+| Living Room Kodi | Living Room Voice |
+| Bedroom Kodi | Bedroom Voice |
+| Media Server | None (default) |
+
+### Upgrading from v1.x
+
+Existing configurations are automatically migrated. Your current Kodi will become the default target (no pipeline assigned). You can reconfigure to assign a specific pipeline if needed.
+
 ## Troubleshooting
 
 ### "Addon not found" error

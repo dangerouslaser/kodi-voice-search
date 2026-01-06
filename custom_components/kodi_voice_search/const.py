@@ -7,6 +7,7 @@ CONF_KODI_PORT = "kodi_port"
 CONF_KODI_USERNAME = "kodi_username"
 CONF_KODI_PASSWORD = "kodi_password"
 CONF_WINDOW_ID = "window_id"
+CONF_PIPELINE_ID = "pipeline_id"
 
 # SSH configuration for auto-install
 CONF_SSH_USERNAME = "ssh_username"

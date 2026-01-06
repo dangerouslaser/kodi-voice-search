@@ -22,6 +22,7 @@ from .const import (
     CONF_KODI_USERNAME,
     CONF_KODI_PASSWORD,
     CONF_WINDOW_ID,
+    CONF_PIPELINE_ID,
     CONF_SSH_USERNAME,
     CONF_SSH_PASSWORD,
     CONF_SSH_PORT,
@@ -364,16 +365,29 @@ async def wait_for_kodi(
     return False
 
 
+def get_pipelines(hass: HomeAssistant) -> dict[str, str]:
+    """Get available Assist pipelines as a dict of {id: name}."""
+    pipelines = {}
+    try:
+        from homeassistant.components.assist_pipeline import async_get_pipelines
+        for pipeline in async_get_pipelines(hass):
+            pipelines[pipeline.id] = pipeline.name
+    except Exception:
+        pass
+    return pipelines
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Kodi Voice Search."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._kodi_data: dict[str, Any] = {}
         self._ssh_data: dict[str, Any] = {}
         self._prerequisites: dict[str, Any] = {}
+        self._available_pipelines: dict[str, str] = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -381,6 +395,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step - check prerequisites."""
         # Check voice assistant prerequisites
         self._prerequisites = check_voice_assistant_prerequisites(self.hass)
+        # Get available pipelines for later
+        self._available_pipelines = get_pipelines(self.hass)
 
         if self._prerequisites["all_ready"]:
             # All prerequisites met, proceed to Kodi config
@@ -445,7 +461,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if not info["addon_installed"]:
                     return await self.async_step_addon_missing()
 
-                return self.async_create_entry(title=info["title"], data=user_input)
+                return await self._finish_setup()
 
         return self.async_show_form(
             step_id="kodi",
@@ -561,10 +577,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Show success message - addon installed and verified."""
         if user_input is not None:
-            return self.async_create_entry(
-                title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
-                data=self._kodi_data,
-            )
+            return await self._finish_setup()
 
         return self.async_show_form(step_id="install_success")
 
@@ -573,10 +586,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle case where SSH restart command failed."""
         if user_input is not None:
-            return self.async_create_entry(
-                title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
-                data=self._kodi_data,
-            )
+            return await self._finish_setup()
 
         return self.async_show_form(step_id="restart_failed")
 
@@ -585,10 +595,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle case where Kodi didn't come back in time."""
         if user_input is not None:
-            return self.async_create_entry(
-                title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
-                data=self._kodi_data,
-            )
+            return await self._finish_setup()
 
         return self.async_show_form(step_id="restart_timeout")
 
@@ -597,10 +604,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle case where addon wasn't detected after restart."""
         if user_input is not None:
-            return self.async_create_entry(
-                title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
-                data=self._kodi_data,
-            )
+            return await self._finish_setup()
 
         return self.async_show_form(step_id="addon_not_detected")
 
@@ -609,12 +613,53 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Confirm setup despite missing addon (manual install)."""
         if user_input is not None:
+            return await self._finish_setup()
+
+        return self.async_show_form(step_id="addon_confirm")
+
+    async def _finish_setup(self) -> FlowResult:
+        """Complete setup - show pipeline selection if multiple pipelines exist."""
+        # If there are multiple pipelines, show selection
+        if len(self._available_pipelines) > 1:
+            return await self.async_step_pipeline()
+        # If only one pipeline, use it automatically
+        elif len(self._available_pipelines) == 1:
+            pipeline_id = next(iter(self._available_pipelines))
+            self._kodi_data[CONF_PIPELINE_ID] = pipeline_id
+        # If no pipelines, leave unset (will use default routing)
+
+        return self.async_create_entry(
+            title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
+            data=self._kodi_data,
+        )
+
+    async def async_step_pipeline(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle pipeline selection for multi-Kodi routing."""
+        if user_input is not None:
+            pipeline_id = user_input.get(CONF_PIPELINE_ID)
+            if pipeline_id and pipeline_id != "_none_":
+                self._kodi_data[CONF_PIPELINE_ID] = pipeline_id
+
             return self.async_create_entry(
                 title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
                 data=self._kodi_data,
             )
 
-        return self.async_show_form(step_id="addon_confirm")
+        # Build options: "None (default)" + all pipelines
+        pipeline_options = {"_none_": "None (use as default)"}
+        pipeline_options.update(self._available_pipelines)
+
+        return self.async_show_form(
+            step_id="pipeline",
+            data_schema=vol.Schema({
+                vol.Required(CONF_PIPELINE_ID, default="_none_"): vol.In(pipeline_options),
+            }),
+            description_placeholders={
+                "pipeline_count": str(len(self._available_pipelines)),
+            },
+        )
 
 
 class CannotConnect(HomeAssistantError):
