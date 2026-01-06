@@ -173,22 +173,50 @@ systemctl restart kodi
 
 ### Voice Commands
 
-**Search** - Opens the skin's search window with your query:
-- "Search Breaking Bad on Kodi"
-- "Find Stranger Things"
-- "Kodi search The Office"
-- "Look for Game of Thrones on Kodi"
+There are two main voice commands available:
 
-**Pull Up** - Navigates directly to a show or movie in your library:
-- "Pull up Jeopardy"
-- "Open The Office on Kodi"
-- "Show me Breaking Bad"
-- "Go to Stranger Things"
+#### Search Command
 
-The "pull up" command is smart:
-- **One match found** → Opens the show/movie page directly
-- **Multiple matches** → Shows search results to choose from
-- **No matches** → Reports "not found in library"
+Opens your skin's search window and enters the search query. Use this to search across all content (library, streaming addons, etc.).
+
+| Example Phrases |
+|----------------|
+| "Search Breaking Bad on Kodi" |
+| "Find Stranger Things" |
+| "Look for Game of Thrones on Kodi" |
+| "Kodi search The Office" |
+| "Kodi find Seinfeld" |
+| "Play Interstellar on Kodi" |
+
+**Supported patterns:**
+- `search/find/look for {query} [on kodi]`
+- `kodi search/find {query}`
+- `play {query} on kodi`
+
+#### Pull Up Command
+
+Navigates directly to content in your Kodi library. Best for quickly accessing shows or movies you already own.
+
+| Example Phrases |
+|----------------|
+| "Pull up Jeopardy" |
+| "Open The Office on Kodi" |
+| "Show me Breaking Bad" |
+| "Go to Stranger Things" |
+| "Kodi open Seinfeld" |
+| "Kodi show Friends" |
+
+**Supported patterns:**
+- `pull up/open/show/show me/go to {query} [on kodi]`
+- `kodi pull up/open/show {query}`
+
+**Smart behavior:**
+| Scenario | Result |
+|----------|--------|
+| One TV show match | Opens episode listing |
+| One movie match | Shows search results for that movie |
+| Multiple matches | Shows search results to choose from |
+| No matches | Reports "not found in library" |
 
 ### Service Calls
 

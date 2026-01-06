@@ -7,6 +7,12 @@ intents:
           - "kodi (search|find) [for] {query}"
           - "play {query} on kodi"
 
+  KodiPullUp:
+    data:
+      - sentences:
+          - "(pull up|open|show [me]|go to) {query} [on] [kodi]"
+          - "kodi (pull up|open|show) {query}"
+
 lists:
   query:
     wildcard: true
