@@ -194,11 +194,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> bool:
-    """Execute search on Kodi."""
+    """Execute search on Kodi.
+
+    Flow:
+    1. Set CustomSearchTerm property and open search window via addon
+    2. Wait for skin to populate the text field (~1.5 seconds)
+    3. Send "select" action to trigger the search
+    """
     config = hass.data[DOMAIN][entry_id]
 
     url = f"http://{config['host']}:{config['port']}/jsonrpc"
 
+    # Step 1: Open search window with search term
     payload = {
         "jsonrpc": "2.0",
         "method": "Addons.ExecuteAddon",
@@ -224,13 +231,46 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
                 if "error" in result:
                     _LOGGER.error("Kodi error: %s", result["error"])
                     return False
-                _LOGGER.debug("Kodi search executed: %s", query)
-                return True
+                _LOGGER.debug("Kodi search window opened: %s", query)
     except aiohttp.ClientError as err:
         _LOGGER.error("Error communicating with Kodi: %s", err)
         return False
     except asyncio.TimeoutError:
         _LOGGER.error("Timeout communicating with Kodi")
+        return False
+
+    # Step 2: Wait for skin to populate the text field
+    # Arctic Fuse 2 uses a 1-second AlarmClock delay, so we wait 1.5s to be safe
+    await asyncio.sleep(1.5)
+
+    # Step 3: Send "select" action to trigger the search
+    select_payload = {
+        "jsonrpc": "2.0",
+        "method": "Input.ExecuteAction",
+        "params": {"action": "select"},
+        "id": 1
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                json=select_payload,
+                auth=auth,
+                headers={"Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                result = await response.json()
+                if "error" in result:
+                    _LOGGER.error("Kodi error triggering search: %s", result["error"])
+                    return False
+                _LOGGER.debug("Kodi search triggered: %s", query)
+                return True
+    except aiohttp.ClientError as err:
+        _LOGGER.error("Error triggering Kodi search: %s", err)
+        return False
+    except asyncio.TimeoutError:
+        _LOGGER.error("Timeout triggering Kodi search")
         return False
 
 
