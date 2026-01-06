@@ -241,14 +241,13 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
     # Step 2: Small delay for window to fully load
     await asyncio.sleep(0.5)
 
-    # Step 3: Call script.skinvariables to set search text and focus results
-    # This bypasses the skin's AlarmClock and sets text directly
+    # Step 3: Call script.skinvariables to set search text
     skinvars_payload = {
         "jsonrpc": "2.0",
         "method": "Addons.ExecuteAddon",
         "params": {
             "addonid": "script.skinvariables",
-            "params": f"set_editcontrol=9099,window_id={config['window_id']},setfocus=5000,text={query}"
+            "params": f"set_editcontrol=9099,window_id={config['window_id']},text={query}"
         },
         "id": 1
     }
@@ -266,13 +265,44 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
                 if "error" in result:
                     _LOGGER.error("Kodi error setting search text: %s", result["error"])
                     return False
-                _LOGGER.debug("Kodi search executed: %s", query)
-                return True
+                _LOGGER.debug("Kodi search text set: %s", query)
     except aiohttp.ClientError as err:
         _LOGGER.error("Error setting Kodi search text: %s", err)
         return False
     except asyncio.TimeoutError:
         _LOGGER.error("Timeout setting Kodi search text")
+        return False
+
+    # Step 4: Small delay then set focus to results container
+    await asyncio.sleep(0.3)
+
+    focus_payload = {
+        "jsonrpc": "2.0",
+        "method": "Input.ExecuteAction",
+        "params": {"action": "down"},
+        "id": 1
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                json=focus_payload,
+                auth=auth,
+                headers={"Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                result = await response.json()
+                if "error" in result:
+                    _LOGGER.error("Kodi error setting focus: %s", result["error"])
+                    return False
+                _LOGGER.debug("Kodi search executed: %s", query)
+                return True
+    except aiohttp.ClientError as err:
+        _LOGGER.error("Error setting Kodi focus: %s", err)
+        return False
+    except asyncio.TimeoutError:
+        _LOGGER.error("Timeout setting Kodi focus")
         return False
 
 
