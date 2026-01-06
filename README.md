@@ -6,14 +6,14 @@
 
 Voice-controlled search for Kodi using the **Unfolded Circle Remote 3** and Home Assistant. Designed specifically for custom skins like Arctic Fuse 2 that use non-standard window IDs not accessible via standard JSON-RPC.
 
-> ⚠️ **Note:** This integration is designed for use with the [Unfolded Circle Remote 3](https://www.unfoldedcircle.com/) and its built-in microphone. While the underlying components may work with other Home Assistant voice setups, this guide and integration are specifically tested and documented for the UC Remote 3.
+> **Note:** This integration is designed for use with the [Unfolded Circle Remote 3](https://www.unfoldedcircle.com/) and its built-in microphone. While the underlying components may work with other Home Assistant voice setups, this guide and integration are specifically tested and documented for the UC Remote 3.
 
 ## Features
 
-- 🎤 Voice search using UC Remote 3's built-in microphone
-- 🎬 Native skin search integration (Arctic Fuse 2, etc.)
-- 🏠 Powered by Home Assistant Assist with Whisper STT
-- ⚡ Simple setup via HACS and config flow
+- Voice search using UC Remote 3's built-in microphone
+- Native skin search integration (Arctic Fuse 2, etc.)
+- Powered by Home Assistant Assist with Whisper STT
+- Simple setup via HACS and config flow
 
 ## How It Works
 
