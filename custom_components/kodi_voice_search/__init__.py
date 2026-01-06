@@ -22,7 +22,9 @@ from .const import (
     CONF_WINDOW_ID,
     CONF_PIPELINE_ID,
     SERVICE_SEARCH,
+    SERVICE_PULL_UP,
     ATTR_QUERY,
+    ATTR_MEDIA_TYPE,
     KODI_ADDON_ID,
     DEFAULT_WINDOW_ID,
 )
@@ -34,6 +36,11 @@ CONFIG_VERSION = 2
 
 SEARCH_SCHEMA = vol.Schema({
     vol.Required(ATTR_QUERY): str,
+})
+
+PULL_UP_SCHEMA = vol.Schema({
+    vol.Required(ATTR_QUERY): str,
+    vol.Optional(ATTR_MEDIA_TYPE, default="all"): vol.In(["all", "tv", "movie"]),
 })
 
 
@@ -68,7 +75,13 @@ intents:
       - sentences:
           - "(search|find|look for) {query} [on] [kodi]"
           - "kodi (search|find) [for] {query}"
-          - "play {query} on kodi"
+
+  KodiPullUp:
+    data:
+      - sentences:
+          - "(pull up|open|show [me]) {query} [on] [kodi]"
+          - "kodi (pull up|open|show) {query}"
+          - "(go to|navigate to) {query} [on] [kodi]"
 
 lists:
   query:
@@ -108,16 +121,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         query = call.data[ATTR_QUERY]
         await _execute_search(hass, entry.entry_id, query)
 
-    # Register service
+    async def async_pull_up(call: ServiceCall) -> None:
+        """Handle the pull up service call."""
+        query = call.data[ATTR_QUERY]
+        media_type = call.data.get(ATTR_MEDIA_TYPE, "all")
+        await _execute_pull_up(hass, entry.entry_id, query, media_type)
+
+    # Register services
     hass.services.async_register(
         DOMAIN,
         SERVICE_SEARCH,
         async_search,
         schema=SEARCH_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_PULL_UP,
+        async_pull_up,
+        schema=PULL_UP_SCHEMA,
+    )
 
-    # Register intent handler for voice commands
+    # Register intent handlers for voice commands
     intent.async_register(hass, KodiSearchIntentHandler())
+    intent.async_register(hass, KodiPullUpIntentHandler())
 
     _LOGGER.info("Kodi Voice Search integration loaded for %s:%s", host, port)
 
@@ -162,6 +188,7 @@ async def _install_custom_sentences(hass: HomeAssistant) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     hass.services.async_remove(DOMAIN, SERVICE_SEARCH)
+    hass.services.async_remove(DOMAIN, SERVICE_PULL_UP)
     hass.data[DOMAIN].pop(entry.entry_id)
     return True
 
@@ -207,6 +234,147 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
         return False
 
 
+async def _kodi_request(config: dict, method: str, params: dict | None = None) -> dict | None:
+    """Make a JSON-RPC request to Kodi."""
+    url = f"http://{config['host']}:{config['port']}/jsonrpc"
+    payload = {
+        "jsonrpc": "2.0",
+        "method": method,
+        "id": 1,
+    }
+    if params:
+        payload["params"] = params
+
+    auth = aiohttp.BasicAuth(config['username'], config['password'])
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                json=payload,
+                auth=auth,
+                headers={"Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                result = await response.json()
+                if "error" in result:
+                    _LOGGER.error("Kodi error: %s", result["error"])
+                    return None
+                return result.get("result")
+    except Exception as err:
+        _LOGGER.error("Kodi request failed: %s", err)
+        return None
+
+
+async def _search_library(
+    config: dict,
+    query: str,
+    media_type: str = "all"
+) -> tuple[list[dict], list[dict]]:
+    """Search Kodi library for TV shows and movies matching the query.
+
+    Returns tuple of (tv_shows, movies).
+    """
+    tv_shows = []
+    movies = []
+    query_lower = query.lower()
+
+    # Search TV shows
+    if media_type in ("all", "tv"):
+        result = await _kodi_request(
+            config,
+            "VideoLibrary.GetTVShows",
+            {"properties": ["title", "year", "thumbnail"]}
+        )
+        if result and "tvshows" in result:
+            for show in result["tvshows"]:
+                if query_lower in show["title"].lower():
+                    tv_shows.append(show)
+
+    # Search movies
+    if media_type in ("all", "movie"):
+        result = await _kodi_request(
+            config,
+            "VideoLibrary.GetMovies",
+            {"properties": ["title", "year", "thumbnail"]}
+        )
+        if result and "movies" in result:
+            for movie in result["movies"]:
+                if query_lower in movie["title"].lower():
+                    movies.append(movie)
+
+    return tv_shows, movies
+
+
+async def _navigate_to_content(
+    config: dict,
+    content_type: str,
+    content_id: int
+) -> bool:
+    """Navigate Kodi to a specific content page."""
+    if content_type == "tvshow":
+        path = f"videodb://tvshows/titles/{content_id}/"
+    elif content_type == "movie":
+        path = f"videodb://movies/titles/{content_id}/"
+    else:
+        return False
+
+    result = await _kodi_request(
+        config,
+        "GUI.ActivateWindow",
+        {"window": "Videos", "parameters": [path]}
+    )
+    return result is not None
+
+
+async def _execute_pull_up(
+    hass: HomeAssistant,
+    entry_id: str,
+    query: str,
+    media_type: str = "all"
+) -> tuple[bool, str]:
+    """Execute pull up command on Kodi.
+
+    Returns tuple of (success, message).
+    """
+    config = hass.data[DOMAIN][entry_id]
+
+    _LOGGER.debug("Pulling up '%s' (type: %s)", query, media_type)
+
+    # Search library
+    tv_shows, movies = await _search_library(config, query, media_type)
+    total_results = len(tv_shows) + len(movies)
+
+    _LOGGER.debug("Found %d TV shows and %d movies", len(tv_shows), len(movies))
+
+    if total_results == 0:
+        # No results - report not found
+        return False, f"I couldn't find {query} in your library"
+
+    elif total_results == 1:
+        # Exactly one result - navigate directly
+        if tv_shows:
+            show = tv_shows[0]
+            success = await _navigate_to_content(config, "tvshow", show["tvshowid"])
+            if success:
+                return True, f"Opening {show['title']}"
+            return False, "Failed to open the show"
+        else:
+            movie = movies[0]
+            success = await _navigate_to_content(config, "movie", movie["movieid"])
+            if success:
+                return True, f"Opening {movie['title']}"
+            return False, "Failed to open the movie"
+
+    else:
+        # Multiple results - use search to show filtered results
+        _LOGGER.debug("Multiple matches found, using search instead")
+        success = await _execute_search(hass, entry_id, query)
+        if success:
+            return True, f"Found multiple matches for {query}"
+        return False, "Failed to search"
+
+
 class KodiSearchIntentHandler(intent.IntentHandler):
     """Handle Kodi search intents."""
 
@@ -244,6 +412,90 @@ class KodiSearchIntentHandler(intent.IntentHandler):
                     response.async_set_speech(f"Searching for {query} on Kodi")
                 else:
                     response.async_set_speech("Sorry, I couldn't connect to Kodi")
+                return response
+
+        response = intent_obj.create_response()
+        response.async_set_speech("Kodi Voice Search is not configured")
+        return response
+
+    def _find_kodi_entry(self, hass: HomeAssistant, conversation_agent_id: str | None) -> str | None:
+        """Find the appropriate Kodi entry based on conversation agent ID.
+
+        Routing logic:
+        1. If conversation_agent_id matches a configured pipeline_id, use that entry
+        2. Otherwise, use an entry with no pipeline_id (default)
+        3. If no default, use the first configured entry
+        """
+        entries = hass.data.get(DOMAIN, {})
+        if not entries:
+            return None
+
+        default_entry_id = None
+        first_entry_id = None
+
+        for entry_id, config in entries.items():
+            if first_entry_id is None:
+                first_entry_id = entry_id
+
+            pipeline_id = config.get("pipeline_id")
+
+            # Check if this entry matches the conversation agent
+            if conversation_agent_id and pipeline_id == conversation_agent_id:
+                _LOGGER.debug(
+                    "Routing to Kodi entry %s (matched pipeline %s)",
+                    entry_id,
+                    pipeline_id,
+                )
+                return entry_id
+
+            # Track entry without pipeline_id as default
+            if not pipeline_id and default_entry_id is None:
+                default_entry_id = entry_id
+
+        # Use default entry if available
+        if default_entry_id:
+            _LOGGER.debug("Routing to default Kodi entry %s", default_entry_id)
+            return default_entry_id
+
+        # Fall back to first entry
+        _LOGGER.debug("Routing to first Kodi entry %s", first_entry_id)
+        return first_entry_id
+
+
+class KodiPullUpIntentHandler(intent.IntentHandler):
+    """Handle Kodi pull up intents."""
+
+    intent_type = "KodiPullUp"
+
+    async def async_handle(self, intent_obj: intent.Intent) -> intent.IntentResponse:
+        """Handle the intent."""
+        hass = intent_obj.hass
+        slots = intent_obj.slots
+
+        query = slots.get("query", {}).get("value", "")
+
+        # Get the conversation agent ID (pipeline) that triggered this intent
+        conversation_agent_id = getattr(intent_obj, "conversation_agent_id", None)
+
+        _LOGGER.info(
+            "KodiPullUp intent triggered with query: %s (agent_id: %s)",
+            query,
+            conversation_agent_id,
+        )
+
+        if not query:
+            response = intent_obj.create_response()
+            response.async_set_speech("I didn't catch what you wanted to pull up.")
+            return response
+
+        # Find the right Kodi entry based on pipeline routing
+        if DOMAIN in hass.data and hass.data[DOMAIN]:
+            entry_id = self._find_kodi_entry(hass, conversation_agent_id)
+            if entry_id:
+                success, message = await _execute_pull_up(hass, entry_id, query)
+
+                response = intent_obj.create_response()
+                response.async_set_speech(message)
                 return response
 
         response = intent_obj.create_response()

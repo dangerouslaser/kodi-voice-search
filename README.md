@@ -173,21 +173,38 @@ systemctl restart kodi
 
 ### Voice Commands
 
-Say any of these to your voice assistant:
-
+**Search** - Opens the skin's search window with your query:
 - "Search Breaking Bad on Kodi"
 - "Find Stranger Things"
 - "Kodi search The Office"
 - "Look for Game of Thrones on Kodi"
 
-### Service Call
+**Pull Up** - Navigates directly to a show or movie in your library:
+- "Pull up Jeopardy"
+- "Open The Office on Kodi"
+- "Show me Breaking Bad"
+- "Go to Stranger Things"
 
-You can also call the service directly:
+The "pull up" command is smart:
+- **One match found** → Opens the show/movie page directly
+- **Multiple matches** → Shows search results to choose from
+- **No matches** → Reports "not found in library"
+
+### Service Calls
+
+You can also call the services directly:
 
 ```yaml
+# Search
 service: kodi_voice_search.search
 data:
   query: "Breaking Bad"
+
+# Pull Up (navigate to content)
+service: kodi_voice_search.pull_up
+data:
+  query: "Jeopardy"
+  media_type: "tv"  # Optional: all, tv, or movie
 ```
 
 ### Automation Example

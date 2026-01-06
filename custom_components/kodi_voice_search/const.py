@@ -22,7 +22,9 @@ DEFAULT_SSH_PORT = 22
 DEFAULT_SSH_USERNAME = "root"
 
 SERVICE_SEARCH = "search"
+SERVICE_PULL_UP = "pull_up"
 ATTR_QUERY = "query"
+ATTR_MEDIA_TYPE = "media_type"
 
 # Arctic Fuse 2 search window
 AF2_SEARCH_WINDOW = "11185"

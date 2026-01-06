@@ -85,6 +85,20 @@
           "description": "The search query to send to Kodi."
         }
       }
+    },
+    "pull_up": {
+      "name": "Pull Up",
+      "description": "Navigate to a TV show or movie in Kodi's library. If one match is found, opens it directly. If multiple matches, shows search results.",
+      "fields": {
+        "query": {
+          "name": "Query",
+          "description": "The name of the TV show or movie to pull up."
+        },
+        "media_type": {
+          "name": "Media Type",
+          "description": "Filter by media type: all, tv, or movie."
+        }
+      }
     }
   }
 }
