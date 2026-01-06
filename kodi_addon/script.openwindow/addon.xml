@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="script.openwindow" name="Open Window" version="1.0.0" provider-name="kodi-voice-search">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0"/>
+  </requires>
+  <extension point="xbmc.python.script" library="default.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">Open custom skin windows via JSON-RPC</summary>
+    <description lang="en">A helper addon that allows opening custom skin windows and setting properties via JSON-RPC. Designed for use with Home Assistant voice control integration.</description>
+    <license>MIT</license>
+    <platform>all</platform>
+    <source>https://github.com/dangerouslaser/kodi-voice-search</source>
+  </extension>
+</addon>

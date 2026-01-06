@@ -1,0 +1,8 @@
+{
+  "name": "Kodi Voice Search (UC Remote 3)",
+  "render_readme": true,
+  "domains": ["kodi_voice_search"],
+  "country": [],
+  "homeassistant": "2024.1.0",
+  "iot_class": "local_polling"
+}

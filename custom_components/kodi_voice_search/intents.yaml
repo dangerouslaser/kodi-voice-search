@@ -1,0 +1,6 @@
+KodiSearch:
+  description: "Search for content on Kodi"
+  slots:
+    query:
+      description: "The search query"
+      required: true

@@ -1,0 +1,11 @@
+search:
+  name: Search
+  description: Search for content on Kodi using the native skin search.
+  fields:
+    query:
+      name: Query
+      description: The search query to send to Kodi.
+      required: true
+      example: "Breaking Bad"
+      selector:
+        text:

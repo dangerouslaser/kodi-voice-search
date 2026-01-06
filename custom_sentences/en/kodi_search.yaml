@@ -1,0 +1,12 @@
+language: "en"
+intents:
+  KodiSearch:
+    data:
+      - sentences:
+          - "(search|find|look for) {query} [on] [kodi]"
+          - "kodi (search|find) [for] {query}"
+          - "play {query} on kodi"
+
+lists:
+  query:
+    wildcard: true

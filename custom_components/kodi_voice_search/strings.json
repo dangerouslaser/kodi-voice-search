@@ -1,0 +1,41 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Kodi",
+        "description": "Enter your Kodi connection details. Window ID {window_id_help}.",
+        "data": {
+          "kodi_host": "Kodi IP Address",
+          "kodi_port": "Kodi Port",
+          "kodi_username": "Username",
+          "kodi_password": "Password",
+          "window_id": "Search Window ID"
+        }
+      },
+      "addon_confirm": {
+        "title": "Kodi Addon Not Found",
+        "description": "The script.openwindow addon is not installed on Kodi. Voice search will not work until you install it. See the documentation for installation instructions.\n\nDo you want to continue anyway?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to Kodi. Check the IP address, port, and credentials.",
+      "invalid_auth": "Invalid authentication credentials.",
+      "unknown": "An unknown error occurred."
+    },
+    "abort": {
+      "already_configured": "This Kodi instance is already configured."
+    }
+  },
+  "services": {
+    "search": {
+      "name": "Search",
+      "description": "Search for content on Kodi using Arctic Fuse 2 native search.",
+      "fields": {
+        "query": {
+          "name": "Query",
+          "description": "The search query to send to Kodi."
+        }
+      }
+    }
+  }
+}
