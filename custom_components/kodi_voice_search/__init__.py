@@ -329,39 +329,10 @@ async def _navigate_to_content(
         return success
 
     elif content_type == "movie":
-        # Movies: Navigate to filtered view with just this movie, then show info
-        # 1. Use Container.Update with XSP filter to show just this movie
-        # 2. Wait for UI to update
-        # 3. Send Action(Info) to show movie details
-        _LOGGER.debug("Opening movie info for movie ID: %s", content_id)
-
-        # Navigate to filtered movie view
-        # Using ActivateWindow with a filter that matches only this movie by ID
-        filter_path = f"videodb://movies/titles/?xsp={{\"rules\":{{\"and\":[{{\"field\":\"dbid\",\"operator\":\"is\",\"value\":\"{content_id}\"}}]}},\"type\":\"movies\"}}"
-
-        result = await _kodi_request(
-            config,
-            "GUI.ActivateWindow",
-            {"window": "videos", "parameters": [filter_path]}
-        )
-
-        if result is None:
-            _LOGGER.error("Failed to navigate to filtered movie view")
-            return False
-
-        # Wait for UI to update and movie to be selected
-        await asyncio.sleep(0.5)
-
-        # Send Info action to show movie details
-        result = await _kodi_request(
-            config,
-            "Input.ExecuteAction",
-            {"action": "info"}
-        )
-
-        success = result is not None
-        _LOGGER.debug("Movie info result: %s (success=%s)", result, success)
-        return success
+        # Movies don't have a navigable detail page like TV shows
+        # Return False to trigger search fallback which works reliably
+        _LOGGER.debug("Movie navigation not supported, using search fallback")
+        return False
 
     return False
 
@@ -401,17 +372,13 @@ async def _execute_pull_up(
             _LOGGER.error("Failed to navigate to TV show %s", show["title"])
             return False, f"Failed to open {show['title']}"
         else:
+            # Movies use search view (no direct detail page navigation)
             movie = movies[0]
-            _LOGGER.info("Found movie: %s (id=%s)", movie["title"], movie["movieid"])
-            success = await _navigate_to_content(config, "movie", movie["movieid"])
-            if success:
-                return True, f"Opening {movie['title']}"
-            # Fall back to search if navigation fails
-            _LOGGER.warning("Movie navigation failed, falling back to search")
+            _LOGGER.info("Found movie: %s (id=%s), using search", movie["title"], movie["movieid"])
             success = await _execute_search(hass, entry_id, movie["title"])
             if success:
                 return True, f"Showing {movie['title']}"
-            return False, f"Failed to open {movie['title']}"
+            return False, f"Failed to show {movie['title']}"
 
     else:
         # Multiple results - use search to show filtered results
