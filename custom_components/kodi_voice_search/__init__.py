@@ -329,22 +329,11 @@ async def _navigate_to_content(
         return success
 
     elif content_type == "movie":
-        # Movies use our addon to open Video info dialog (12003)
-        # GUI.ActivateWindow doesn't accept numeric window IDs
-        path = f"videodb://movies/{content_id}/"
-        _LOGGER.debug("Opening movie info for movie ID %s with path: %s", content_id, path)
-
-        result = await _kodi_request(
-            config,
-            "Addons.ExecuteAddon",
-            {
-                "addonid": KODI_ADDON_ID,
-                "params": f"window=12003&path={path}"
-            }
-        )
-        success = result is not None
-        _LOGGER.debug("Addon result: %s (success=%s)", result, success)
-        return success
+        # Movies don't have a detail page like TV shows
+        # Video info dialog (12003) shows info for currently selected item, not a specific movie
+        # Return False to trigger search fallback
+        _LOGGER.debug("Movie navigation not supported, will use search fallback")
+        return False
 
     return False
 
@@ -374,8 +363,9 @@ async def _execute_pull_up(
         return False, f"I couldn't find {query} in your library"
 
     elif total_results == 1:
-        # Exactly one result - navigate directly
+        # Exactly one result
         if tv_shows:
+            # TV shows navigate directly to episode listing
             show = tv_shows[0]
             _LOGGER.info("Found TV show: %s (id=%s)", show["title"], show["tvshowid"])
             success = await _navigate_to_content(config, "tvshow", show["tvshowid"])
@@ -384,13 +374,13 @@ async def _execute_pull_up(
             _LOGGER.error("Failed to navigate to TV show %s", show["title"])
             return False, f"Failed to open {show['title']}"
         else:
+            # Movies use search since there's no direct movie detail page
             movie = movies[0]
-            _LOGGER.info("Found movie: %s (id=%s)", movie["title"], movie["movieid"])
-            success = await _navigate_to_content(config, "movie", movie["movieid"])
+            _LOGGER.info("Found movie: %s (id=%s), using search", movie["title"], movie["movieid"])
+            success = await _execute_search(hass, entry_id, movie["title"])
             if success:
-                return True, f"Opening {movie['title']}"
-            _LOGGER.error("Failed to navigate to movie %s", movie["title"])
-            return False, f"Failed to open {movie['title']}"
+                return True, f"Showing {movie['title']}"
+            return False, f"Failed to show {movie['title']}"
 
     else:
         # Multiple results - use search to show filtered results
