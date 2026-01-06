@@ -361,8 +361,9 @@ async def _execute_pull_up(
         return False, f"I couldn't find {query} in your library"
 
     elif total_results == 1:
-        # Exactly one result - navigate directly
+        # Exactly one result
         if tv_shows:
+            # TV shows can navigate directly to episode listing
             show = tv_shows[0]
             _LOGGER.info("Found TV show: %s (id=%s)", show["title"], show["tvshowid"])
             success = await _navigate_to_content(config, "tvshow", show["tvshowid"])
@@ -371,13 +372,13 @@ async def _execute_pull_up(
             _LOGGER.error("Failed to navigate to TV show %s", show["title"])
             return False, f"Failed to open {show['title']}"
         else:
+            # Movies don't have a detail page - use search to show the movie
             movie = movies[0]
-            _LOGGER.info("Found movie: %s (id=%s)", movie["title"], movie["movieid"])
-            success = await _navigate_to_content(config, "movie", movie["movieid"])
+            _LOGGER.info("Found movie: %s (id=%s), using search", movie["title"], movie["movieid"])
+            success = await _execute_search(hass, entry_id, movie["title"])
             if success:
-                return True, f"Opening {movie['title']}"
-            _LOGGER.error("Failed to navigate to movie %s", movie["title"])
-            return False, f"Failed to open {movie['title']}"
+                return True, f"Showing {movie['title']}"
+            return False, f"Failed to show {movie['title']}"
 
     else:
         # Multiple results - use search to show filtered results
