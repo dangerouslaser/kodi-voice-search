@@ -243,17 +243,13 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
 
     # Step 3: Call script.skinvariables to set search text and focus results
     # This bypasses the skin's AlarmClock and sets text directly
+    # Params must be passed as a string with comma-separated key=value pairs
     skinvars_payload = {
         "jsonrpc": "2.0",
         "method": "Addons.ExecuteAddon",
         "params": {
             "addonid": "script.skinvariables",
-            "params": {
-                "set_editcontrol": "9099",
-                "window_id": config['window_id'],
-                "setfocus": "5000",
-                "text": query
-            }
+            "params": f"set_editcontrol=9099,window_id={config['window_id']},setfocus=5000,text={query}"
         },
         "id": 1
     }
