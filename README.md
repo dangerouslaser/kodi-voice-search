@@ -69,11 +69,14 @@ If the addon is not detected, the integration will offer to install it automatic
    - **Username**: `root` (default for CoreELEC/LibreELEC)
    - **Password**: Leave empty if none is set
    - **Port**: `22` (default)
-3. The addon will be installed automatically
-4. **Restart Kodi** to load the addon:
-   ```bash
-   systemctl restart kodi
-   ```
+3. The integration will automatically:
+   - Install the addon files via SSH
+   - Restart Kodi
+   - Wait for Kodi to come back online
+   - Enable the addon
+   - Verify everything is working
+
+No manual steps required!
 
 > **Note:** Auto-install works with CoreELEC and LibreELEC. For other Kodi installations, use manual installation.
 

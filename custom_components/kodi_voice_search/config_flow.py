@@ -1,6 +1,7 @@
 """Config flow for Kodi Voice Search integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -36,6 +37,11 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Timeouts and retry settings
+KODI_RESTART_WAIT = 5  # Seconds to wait for Kodi to shut down
+KODI_POLL_INTERVAL = 2  # Seconds between ping attempts
+KODI_RESTART_TIMEOUT = 60  # Max seconds to wait for Kodi to come back
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
@@ -116,6 +122,27 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     }
 
 
+async def ping_kodi(host: str, port: int, username: str, password: str) -> bool:
+    """Ping Kodi to check if it's responding."""
+    url = f"http://{host}:{port}/jsonrpc"
+    payload = {"jsonrpc": "2.0", "method": "JSONRPC.Ping", "id": 1}
+    auth = aiohttp.BasicAuth(username, password)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                json=payload,
+                auth=auth,
+                headers={"Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=5)
+            ) as response:
+                result = await response.json()
+                return result.get("result") == "pong"
+    except Exception:
+        return False
+
+
 async def check_addon_installed(host: str, port: int, username: str, password: str) -> bool:
     """Check if the helper addon is installed on Kodi."""
     url = f"http://{host}:{port}/jsonrpc"
@@ -144,6 +171,41 @@ async def check_addon_installed(host: str, port: int, username: str, password: s
         return False
 
 
+async def enable_addon(host: str, port: int, username: str, password: str) -> bool:
+    """Enable the addon via JSON-RPC."""
+    url = f"http://{host}:{port}/jsonrpc"
+
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "Addons.SetAddonEnabled",
+        "params": {
+            "addonid": KODI_ADDON_ID,
+            "enabled": True
+        },
+        "id": 1
+    }
+
+    auth = aiohttp.BasicAuth(username, password)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                json=payload,
+                auth=auth,
+                headers={"Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                result = await response.json()
+                success = result.get("result") == "OK"
+                if success:
+                    _LOGGER.info("Successfully enabled Kodi addon")
+                return success
+    except Exception as err:
+        _LOGGER.error("Failed to enable addon: %s", err)
+        return False
+
+
 async def install_addon_via_ssh(
     host: str,
     username: str,
@@ -152,18 +214,16 @@ async def install_addon_via_ssh(
 ) -> bool:
     """Install the Kodi addon via SSH."""
     try:
-        # Connect with or without password
         connect_kwargs = {
             "host": host,
             "port": port,
             "username": username,
-            "known_hosts": None,  # Skip host key verification
+            "known_hosts": None,
         }
 
         if password:
             connect_kwargs["password"] = password
         else:
-            # Try without password (some CoreELEC setups)
             connect_kwargs["password"] = ""
 
         async with asyncssh.connect(**connect_kwargs) as conn:
@@ -171,7 +231,6 @@ async def install_addon_via_ssh(
             await conn.run(f"mkdir -p {KODI_ADDON_PATH}", check=True)
 
             # Write addon.xml
-            escaped_xml = ADDON_XML.replace("'", "'\\''")
             await conn.run(
                 f"cat > {KODI_ADDON_PATH}/addon.xml << 'ADDONXML'\n{ADDON_XML}\nADDONXML",
                 check=True
@@ -197,6 +256,65 @@ async def install_addon_via_ssh(
         raise SSHInstallFailed(str(err))
 
 
+async def restart_kodi_via_ssh(
+    host: str,
+    username: str,
+    password: str | None,
+    port: int
+) -> bool:
+    """Restart Kodi service via SSH."""
+    try:
+        connect_kwargs = {
+            "host": host,
+            "port": port,
+            "username": username,
+            "known_hosts": None,
+        }
+
+        if password:
+            connect_kwargs["password"] = password
+        else:
+            connect_kwargs["password"] = ""
+
+        async with asyncssh.connect(**connect_kwargs) as conn:
+            result = await conn.run("systemctl restart kodi", check=False)
+            if result.exit_status == 0:
+                _LOGGER.info("Successfully restarted Kodi via SSH")
+                return True
+            else:
+                _LOGGER.error("Failed to restart Kodi: %s", result.stderr)
+                return False
+
+    except Exception as err:
+        _LOGGER.error("SSH restart failed: %s", err)
+        return False
+
+
+async def wait_for_kodi(
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    timeout: int = KODI_RESTART_TIMEOUT
+) -> bool:
+    """Wait for Kodi to come back online after restart."""
+    _LOGGER.info("Waiting for Kodi to restart...")
+
+    # Wait for Kodi to shut down first
+    await asyncio.sleep(KODI_RESTART_WAIT)
+
+    elapsed = 0
+    while elapsed < timeout:
+        if await ping_kodi(host, port, username, password):
+            _LOGGER.info("Kodi is back online after %d seconds", elapsed + KODI_RESTART_WAIT)
+            return True
+        await asyncio.sleep(KODI_POLL_INTERVAL)
+        elapsed += KODI_POLL_INTERVAL
+
+    _LOGGER.error("Timeout waiting for Kodi to restart")
+    return False
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Kodi Voice Search."""
 
@@ -205,6 +323,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._kodi_data: dict[str, Any] = {}
+        self._ssh_data: dict[str, Any] = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -264,15 +383,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                # Use Kodi host for SSH
+                # Store SSH credentials for restart step
+                self._ssh_data = user_input
+
+                # Install addon via SSH
                 await install_addon_via_ssh(
                     host=self._kodi_data[CONF_KODI_HOST],
                     username=user_input[CONF_SSH_USERNAME],
                     password=user_input.get(CONF_SSH_PASSWORD),
                     port=user_input[CONF_SSH_PORT],
                 )
-                # Show success message and create entry
-                return await self.async_step_install_success()
+
+                # Proceed to restart Kodi
+                return await self.async_step_restarting()
+
             except SSHFailed:
                 errors["base"] = "ssh_failed"
             except SSHInstallFailed:
@@ -287,10 +411,61 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_restarting(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Restart Kodi and wait for it to come back."""
+        errors: dict[str, str] = {}
+
+        # Restart Kodi via SSH
+        restart_success = await restart_kodi_via_ssh(
+            host=self._kodi_data[CONF_KODI_HOST],
+            username=self._ssh_data[CONF_SSH_USERNAME],
+            password=self._ssh_data.get(CONF_SSH_PASSWORD),
+            port=self._ssh_data[CONF_SSH_PORT],
+        )
+
+        if not restart_success:
+            # Restart failed, show manual restart message
+            return await self.async_step_restart_failed()
+
+        # Wait for Kodi to come back online
+        kodi_online = await wait_for_kodi(
+            host=self._kodi_data[CONF_KODI_HOST],
+            port=self._kodi_data[CONF_KODI_PORT],
+            username=self._kodi_data[CONF_KODI_USERNAME],
+            password=self._kodi_data[CONF_KODI_PASSWORD],
+        )
+
+        if not kodi_online:
+            # Timeout waiting for Kodi
+            return await self.async_step_restart_timeout()
+
+        # Kodi is back, now enable the addon
+        await enable_addon(
+            host=self._kodi_data[CONF_KODI_HOST],
+            port=self._kodi_data[CONF_KODI_PORT],
+            username=self._kodi_data[CONF_KODI_USERNAME],
+            password=self._kodi_data[CONF_KODI_PASSWORD],
+        )
+
+        # Verify addon is now installed and enabled
+        addon_ready = await check_addon_installed(
+            host=self._kodi_data[CONF_KODI_HOST],
+            port=self._kodi_data[CONF_KODI_PORT],
+            username=self._kodi_data[CONF_KODI_USERNAME],
+            password=self._kodi_data[CONF_KODI_PASSWORD],
+        )
+
+        if addon_ready:
+            return await self.async_step_install_success()
+        else:
+            return await self.async_step_addon_not_detected()
+
     async def async_step_install_success(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Show success message after SSH install."""
+        """Show success message - addon installed and verified."""
         if user_input is not None:
             return self.async_create_entry(
                 title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
@@ -298,6 +473,42 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         return self.async_show_form(step_id="install_success")
+
+    async def async_step_restart_failed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle case where SSH restart command failed."""
+        if user_input is not None:
+            return self.async_create_entry(
+                title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
+                data=self._kodi_data,
+            )
+
+        return self.async_show_form(step_id="restart_failed")
+
+    async def async_step_restart_timeout(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle case where Kodi didn't come back in time."""
+        if user_input is not None:
+            return self.async_create_entry(
+                title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
+                data=self._kodi_data,
+            )
+
+        return self.async_show_form(step_id="restart_timeout")
+
+    async def async_step_addon_not_detected(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle case where addon wasn't detected after restart."""
+        if user_input is not None:
+            return self.async_create_entry(
+                title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
+                data=self._kodi_data,
+            )
+
+        return self.async_show_form(step_id="addon_not_detected")
 
     async def async_step_addon_confirm(
         self, user_input: dict[str, Any] | None = None

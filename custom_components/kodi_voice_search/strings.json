@@ -33,8 +33,20 @@
         "description": "Please install the script.openwindow addon manually. See the documentation for installation instructions.\n\nVoice search will not work until the addon is installed.\n\nClick Submit to continue anyway."
       },
       "install_success": {
-        "title": "Addon Installed Successfully",
-        "description": "The script.openwindow addon has been installed on your Kodi device.\n\n**Important:** You must restart Kodi for the addon to be loaded.\n\nRun: `systemctl restart kodi`"
+        "title": "Setup Complete",
+        "description": "The script.openwindow addon has been installed, Kodi has been restarted, and the addon is now active.\n\nYou can now use voice commands to search Kodi!"
+      },
+      "restart_failed": {
+        "title": "Could Not Restart Kodi",
+        "description": "The addon was installed but we couldn't restart Kodi automatically.\n\nPlease restart Kodi manually:\n```\nsystemctl restart kodi\n```\n\nClick Submit to complete setup."
+      },
+      "restart_timeout": {
+        "title": "Kodi Restart Timeout",
+        "description": "The addon was installed and Kodi was restarted, but Kodi didn't respond in time.\n\nThis might just mean Kodi is taking longer to start. Please wait a moment and verify Kodi is running.\n\nClick Submit to complete setup."
+      },
+      "addon_not_detected": {
+        "title": "Addon Not Detected",
+        "description": "The addon files were installed and Kodi was restarted, but the addon wasn't detected.\n\nThis sometimes happens if Kodi needs another restart. Try restarting Kodi manually:\n```\nsystemctl restart kodi\n```\n\nClick Submit to complete setup."
       }
     },
     "error": {
