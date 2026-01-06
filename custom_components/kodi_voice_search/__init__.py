@@ -239,9 +239,8 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
         _LOGGER.error("Timeout communicating with Kodi")
         return False
 
-    # Step 2: Wait for skin to populate the text field
-    # Arctic Fuse 2 uses a 1-second AlarmClock delay, so we wait 1.5s to be safe
-    await asyncio.sleep(1.5)
+    # Step 2: Send select immediately before skin moves focus to keyboard
+    # (No delay - the search term is already set via property)
 
     # Step 3: Send "select" action to trigger the search
     select_payload = {
