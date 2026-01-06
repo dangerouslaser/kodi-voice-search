@@ -701,6 +701,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _finish_setup(self) -> FlowResult:
         """Complete setup - show pipeline selection if multiple pipelines exist."""
+        # Check if this is a reconfigure
+        if self.context.get("entry_id"):
+            # Reconfigure - just abort with success since addon was updated
+            return self.async_abort(reason="reconfigure_successful")
+
         # If there are multiple pipelines, show selection
         if len(self._available_pipelines) > 1:
             return await self.async_step_pipeline()
@@ -741,6 +746,40 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "pipeline_count": str(len(self._available_pipelines)),
             },
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle reconfiguration - check addon status and offer update."""
+        # Get the existing config entry
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        if not entry:
+            return self.async_abort(reason="reconfigure_failed")
+
+        # Store existing data
+        self._kodi_data = dict(entry.data)
+
+        # Check addon status
+        addon_status = await check_addon_status(
+            self._kodi_data[CONF_KODI_HOST],
+            self._kodi_data[CONF_KODI_PORT],
+            self._kodi_data[CONF_KODI_USERNAME],
+            self._kodi_data[CONF_KODI_PASSWORD],
+        )
+
+        self._addon_version = addon_status.get("version")
+
+        if not addon_status["installed"]:
+            return await self.async_step_addon_missing()
+
+        if addon_status["needs_update"]:
+            return await self.async_step_addon_update()
+
+        # Addon is up to date
+        return self.async_abort(
+            reason="addon_up_to_date",
+            description_placeholders={"installed_version": self._addon_version or "unknown"},
         )
 
 

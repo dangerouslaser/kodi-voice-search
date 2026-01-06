@@ -79,7 +79,10 @@
     },
     "abort": {
       "already_configured": "This Kodi instance is already configured.",
-      "prerequisites_not_met": "Voice assistant prerequisites not met. Please set up Whisper and Assist pipeline first."
+      "prerequisites_not_met": "Voice assistant prerequisites not met. Please set up Whisper and Assist pipeline first.",
+      "reconfigure_failed": "Could not reconfigure - entry not found.",
+      "reconfigure_successful": "Kodi addon updated successfully! Restart Kodi for changes to take effect.",
+      "addon_up_to_date": "Kodi addon is already up to date (version {installed_version})."
     }
   },
   "services": {
