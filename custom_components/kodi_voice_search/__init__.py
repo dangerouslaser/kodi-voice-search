@@ -245,6 +245,7 @@ async def _kodi_request(config: dict, method: str, params: dict | None = None) -
     if params:
         payload["params"] = params
 
+    _LOGGER.debug("Kodi request: %s %s", method, params)
     auth = aiohttp.BasicAuth(config['username'], config['password'])
 
     try:
@@ -257,12 +258,13 @@ async def _kodi_request(config: dict, method: str, params: dict | None = None) -
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 result = await response.json()
+                _LOGGER.debug("Kodi response: %s", result)
                 if "error" in result:
-                    _LOGGER.error("Kodi error: %s", result["error"])
+                    _LOGGER.error("Kodi error for %s: %s", method, result["error"])
                     return None
                 return result.get("result")
     except Exception as err:
-        _LOGGER.error("Kodi request failed: %s", err)
+        _LOGGER.error("Kodi request failed for %s: %s", method, err)
         return None
 
 
@@ -315,16 +317,23 @@ async def _navigate_to_content(
     if content_type == "tvshow":
         path = f"videodb://tvshows/titles/{content_id}/"
     elif content_type == "movie":
+        # Movies use a different path structure
         path = f"videodb://movies/titles/{content_id}/"
     else:
         return False
 
+    _LOGGER.debug("Navigating to: %s", path)
+
     result = await _kodi_request(
         config,
         "GUI.ActivateWindow",
-        {"window": "Videos", "parameters": [path]}
+        {"window": "videos", "parameters": [path]}
     )
-    return result is not None
+
+    # GUI.ActivateWindow returns empty string "" on success
+    success = result is not None
+    _LOGGER.debug("Navigation result: %s (success=%s)", result, success)
+    return success
 
 
 async def _execute_pull_up(
@@ -355,16 +364,20 @@ async def _execute_pull_up(
         # Exactly one result - navigate directly
         if tv_shows:
             show = tv_shows[0]
+            _LOGGER.info("Found TV show: %s (id=%s)", show["title"], show["tvshowid"])
             success = await _navigate_to_content(config, "tvshow", show["tvshowid"])
             if success:
                 return True, f"Opening {show['title']}"
-            return False, "Failed to open the show"
+            _LOGGER.error("Failed to navigate to TV show %s", show["title"])
+            return False, f"Failed to open {show['title']}"
         else:
             movie = movies[0]
+            _LOGGER.info("Found movie: %s (id=%s)", movie["title"], movie["movieid"])
             success = await _navigate_to_content(config, "movie", movie["movieid"])
             if success:
                 return True, f"Opening {movie['title']}"
-            return False, "Failed to open the movie"
+            _LOGGER.error("Failed to navigate to movie %s", movie["title"])
+            return False, f"Failed to open {movie['title']}"
 
     else:
         # Multiple results - use search to show filtered results
