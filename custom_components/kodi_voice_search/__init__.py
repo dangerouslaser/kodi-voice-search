@@ -239,14 +239,11 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
         _LOGGER.error("Timeout communicating with Kodi")
         return False
 
-    # Step 2: Send select immediately before skin moves focus to keyboard
-    # (No delay - the search term is already set via property)
-
-    # Step 3: Send "select" action to trigger the search
-    select_payload = {
+    # Step 2: Send "left" navigation to move focus and trigger search
+    left_payload = {
         "jsonrpc": "2.0",
         "method": "Input.ExecuteAction",
-        "params": {"action": "select"},
+        "params": {"action": "left"},
         "id": 1
     }
 
@@ -254,7 +251,7 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 url,
-                json=select_payload,
+                json=left_payload,
                 auth=auth,
                 headers={"Content-Type": "application/json"},
                 timeout=aiohttp.ClientTimeout(total=10)
