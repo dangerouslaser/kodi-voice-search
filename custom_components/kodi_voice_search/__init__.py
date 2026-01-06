@@ -316,18 +316,20 @@ async def _navigate_to_content(
     """Navigate Kodi to a specific content page."""
     if content_type == "tvshow":
         path = f"videodb://tvshows/titles/{content_id}/"
+        window = "videos"
     elif content_type == "movie":
-        # Movies don't have a "titles" subfolder like TV shows
+        # Movies use the Video info dialog (window 12003)
         path = f"videodb://movies/{content_id}/"
+        window = "12003"
     else:
         return False
 
-    _LOGGER.debug("Navigating to: %s", path)
+    _LOGGER.debug("Navigating to window %s with path: %s", window, path)
 
     result = await _kodi_request(
         config,
         "GUI.ActivateWindow",
-        {"window": "videos", "parameters": [path]}
+        {"window": window, "parameters": [path]}
     )
 
     # GUI.ActivateWindow returns empty string "" on success
@@ -361,9 +363,8 @@ async def _execute_pull_up(
         return False, f"I couldn't find {query} in your library"
 
     elif total_results == 1:
-        # Exactly one result
+        # Exactly one result - navigate directly
         if tv_shows:
-            # TV shows can navigate directly to episode listing
             show = tv_shows[0]
             _LOGGER.info("Found TV show: %s (id=%s)", show["title"], show["tvshowid"])
             success = await _navigate_to_content(config, "tvshow", show["tvshowid"])
@@ -372,13 +373,13 @@ async def _execute_pull_up(
             _LOGGER.error("Failed to navigate to TV show %s", show["title"])
             return False, f"Failed to open {show['title']}"
         else:
-            # Movies don't have a detail page - use search to show the movie
             movie = movies[0]
-            _LOGGER.info("Found movie: %s (id=%s), using search", movie["title"], movie["movieid"])
-            success = await _execute_search(hass, entry_id, movie["title"])
+            _LOGGER.info("Found movie: %s (id=%s)", movie["title"], movie["movieid"])
+            success = await _navigate_to_content(config, "movie", movie["movieid"])
             if success:
-                return True, f"Showing {movie['title']}"
-            return False, f"Failed to show {movie['title']}"
+                return True, f"Opening {movie['title']}"
+            _LOGGER.error("Failed to navigate to movie %s", movie["title"])
+            return False, f"Failed to open {movie['title']}"
 
     else:
         # Multiple results - use search to show filtered results
