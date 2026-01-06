@@ -45,13 +45,41 @@ Since Kodi's JSON-RPC API doesn't support opening custom skin windows directly (
 6. Search for "Kodi Voice Search" and install it
 7. Restart Home Assistant
 
-### Part 2: Kodi Addon
+### Part 2: Configure the Integration
 
-The Kodi addon must be installed manually on your Kodi device.
+1. Go to **Settings → Devices & Services → Add Integration**
+2. Search for "Kodi Voice Search"
+3. Enter your Kodi details:
+   - **IP Address**: Your Kodi device IP
+   - **Port**: 8080 (default)
+   - **Username**: kodi (default)
+   - **Password**: kodi (default)
+   - **Window ID**: 11185 (for Arctic Fuse 2 search)
 
-#### Option A: Manual Installation (Recommended)
+### Part 3: Kodi Addon Installation
 
-SSH into your Kodi device (CoreELEC/LibreELEC) and run:
+The integration requires a small helper addon (`script.openwindow`) on your Kodi device.
+
+#### Option A: Auto-Install via SSH (Recommended)
+
+If the addon is not detected, the integration will offer to install it automatically:
+
+1. Select **"Auto-install via SSH"** when prompted
+2. Enter your SSH credentials:
+   - **Username**: `root` (default for CoreELEC/LibreELEC)
+   - **Password**: Leave empty if none is set
+   - **Port**: `22` (default)
+3. The addon will be installed automatically
+4. **Restart Kodi** to load the addon:
+   ```bash
+   systemctl restart kodi
+   ```
+
+> **Note:** Auto-install works with CoreELEC and LibreELEC. For other Kodi installations, use manual installation.
+
+#### Option B: Manual Installation
+
+If auto-install doesn't work or you prefer manual installation, SSH into your Kodi device and run:
 
 ```bash
 mkdir -p /storage/.kodi/addons/script.openwindow
@@ -103,7 +131,7 @@ Then restart Kodi:
 systemctl restart kodi
 ```
 
-#### Option B: Copy Files
+#### Option C: Copy Files
 
 1. Download the `kodi_addon/script.openwindow` folder from this repository
 2. Copy it to your Kodi addons directory:
@@ -112,44 +140,6 @@ systemctl restart kodi
    - Linux: `~/.kodi/addons/`
    - macOS: `~/Library/Application Support/Kodi/addons/`
 3. Restart Kodi
-
-### Part 3: Configure the Integration
-
-1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for "Kodi Voice Search"
-3. Enter your Kodi details:
-   - **IP Address**: Your Kodi device IP
-   - **Port**: 8080 (default)
-   - **Username**: kodi (default)
-   - **Password**: kodi (default)
-   - **Window ID**: 11185 (for Arctic Fuse 2 search)
-
-### Part 4: Set Up Voice Commands
-
-Copy the custom sentences file to your Home Assistant config:
-
-```bash
-mkdir -p /config/custom_sentences/en
-```
-
-Create `/config/custom_sentences/en/kodi_search.yaml`:
-
-```yaml
-language: "en"
-intents:
-  KodiSearch:
-    data:
-      - sentences:
-          - "(search|find|look for) {query} [on] [kodi]"
-          - "kodi (search|find) [for] {query}"
-          - "play {query} on kodi"
-
-lists:
-  query:
-    wildcard: true
-```
-
-Restart Home Assistant or reload the configuration.
 
 ## Usage
 
@@ -231,9 +221,9 @@ systemctl restart kodi
 
 ### Voice commands not recognized
 
-1. Ensure custom sentences file is in the correct location
-2. Restart Home Assistant after adding sentences
-3. Test STT is working in **Developer Tools → Actions → assist_pipeline.run**
+1. Restart Home Assistant after installing the integration
+2. Test STT is working in **Developer Tools → Actions → assist_pipeline.run**
+3. If you want custom voice patterns, create your own `custom_sentences/en/kodi_search.yaml`
 
 ### Search window doesn't open
 
@@ -262,7 +252,7 @@ rest_command:
                   "params": {"info": "search", "tmdb_type": "multi", "query": "{{ text }}"}}, "id": 1}
 ```
 
-## Part 5: Unfolded Circle Remote 3 Setup
+## Part 4: Unfolded Circle Remote 3 Setup
 
 This is the primary use case for this integration. The UC Remote 3's built-in microphone sends voice commands to Home Assistant.
 

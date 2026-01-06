@@ -12,15 +12,37 @@
           "window_id": "Search Window ID"
         }
       },
-      "addon_confirm": {
+      "addon_missing": {
         "title": "Kodi Addon Not Found",
-        "description": "The script.openwindow addon is not installed on Kodi. Voice search will not work until you install it. See the documentation for installation instructions.\n\nDo you want to continue anyway?"
+        "description": "The script.openwindow addon is required but not installed on Kodi.\n\nWould you like to automatically install it via SSH? This works with CoreELEC/LibreELEC.",
+        "data": {
+          "install_method": "Installation method"
+        }
+      },
+      "ssh_install": {
+        "title": "SSH Auto-Install",
+        "description": "Enter SSH credentials for your Kodi device. For CoreELEC/LibreELEC, the default is root with no password.",
+        "data": {
+          "ssh_username": "SSH Username",
+          "ssh_password": "SSH Password (leave empty if none)",
+          "ssh_port": "SSH Port"
+        }
+      },
+      "addon_confirm": {
+        "title": "Manual Installation Required",
+        "description": "Please install the script.openwindow addon manually. See the documentation for installation instructions.\n\nVoice search will not work until the addon is installed.\n\nClick Submit to continue anyway."
+      },
+      "install_success": {
+        "title": "Addon Installed Successfully",
+        "description": "The script.openwindow addon has been installed on your Kodi device.\n\n**Important:** You must restart Kodi for the addon to be loaded.\n\nRun: `systemctl restart kodi`"
       }
     },
     "error": {
       "cannot_connect": "Cannot connect to Kodi. Check the IP address, port, and credentials.",
       "invalid_auth": "Invalid authentication credentials.",
-      "unknown": "An unknown error occurred."
+      "unknown": "An unknown error occurred.",
+      "ssh_failed": "SSH connection failed. Check the credentials and ensure SSH is enabled.",
+      "ssh_install_failed": "Failed to install addon via SSH. Please install manually."
     },
     "abort": {
       "already_configured": "This Kodi instance is already configured."
