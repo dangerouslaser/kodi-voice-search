@@ -1,7 +1,14 @@
 {
   "config": {
     "step": {
-      "user": {
+      "prerequisites_missing": {
+        "title": "Voice Assistant Setup Required",
+        "description": "This integration requires a voice assistant to be configured.\n\n**Status:**\n- Speech-to-Text: {stt_status} ({stt_provider})\n- Assist Pipeline: {assist_status} ({pipeline_count} pipelines)\n\n**Missing:** {missing_items}\n\n**To set up voice assistant:**\n1. Install Wyoming Whisper add-on (Settings → Add-ons)\n2. Configure Whisper integration (Settings → Integrations)\n3. Create an Assist pipeline (Settings → Voice Assistants)\n\nYou can continue anyway, but voice commands won't work until this is configured.",
+        "data": {
+          "continue_anyway": "Continue without voice assistant"
+        }
+      },
+      "kodi": {
         "title": "Connect to Kodi",
         "description": "Enter your Kodi connection details. Window ID {window_id_help}.",
         "data": {
@@ -57,7 +64,8 @@
       "ssh_install_failed": "Failed to install addon via SSH. Please install manually."
     },
     "abort": {
-      "already_configured": "This Kodi instance is already configured."
+      "already_configured": "This Kodi instance is already configured.",
+      "prerequisites_not_met": "Voice assistant prerequisites not met. Please set up Whisper and Assist pipeline first."
     }
   },
   "services": {

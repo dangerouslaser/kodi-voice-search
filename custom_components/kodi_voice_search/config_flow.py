@@ -13,6 +13,7 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     DOMAIN,
@@ -43,7 +44,7 @@ KODI_RESTART_WAIT = 5  # Seconds to wait for Kodi to shut down
 KODI_POLL_INTERVAL = 2  # Seconds between ping attempts
 KODI_RESTART_TIMEOUT = 60  # Max seconds to wait for Kodi to come back
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
+STEP_KODI_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_KODI_HOST): str,
         vol.Required(CONF_KODI_PORT, default=DEFAULT_PORT): int,
@@ -74,6 +75,54 @@ STEP_SSH_INSTALL_SCHEMA = vol.Schema(
         vol.Required(CONF_SSH_PORT, default=DEFAULT_SSH_PORT): int,
     }
 )
+
+
+def check_voice_assistant_prerequisites(hass: HomeAssistant) -> dict[str, Any]:
+    """Check if voice assistant prerequisites are met."""
+    results = {
+        "stt_available": False,
+        "stt_provider": None,
+        "assist_available": False,
+        "pipeline_count": 0,
+        "all_ready": False,
+    }
+
+    # Check for STT providers
+    # Look for common STT integrations
+    stt_integrations = ["wyoming", "whisper", "cloud", "google_cloud_speech"]
+    for integration in stt_integrations:
+        if integration in hass.config.components:
+            results["stt_available"] = True
+            results["stt_provider"] = integration
+            break
+
+    # Also check if stt domain has any entities
+    entity_reg = er.async_get(hass)
+    stt_entities = [
+        entity for entity in entity_reg.entities.values()
+        if entity.domain == "stt" or entity.platform in stt_integrations
+    ]
+    if stt_entities:
+        results["stt_available"] = True
+        if not results["stt_provider"]:
+            results["stt_provider"] = stt_entities[0].platform
+
+    # Check for Assist Pipeline
+    if "assist_pipeline" in hass.config.components:
+        results["assist_available"] = True
+        # Try to get pipeline count
+        try:
+            from homeassistant.components.assist_pipeline import async_get_pipelines
+            pipelines = async_get_pipelines(hass)
+            results["pipeline_count"] = len(list(pipelines))
+        except Exception:
+            # If we can't get pipelines, assume at least default exists
+            results["pipeline_count"] = 1
+
+    # Check if everything is ready
+    results["all_ready"] = results["stt_available"] and results["assist_available"]
+
+    return results
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
@@ -324,11 +373,58 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._kodi_data: dict[str, Any] = {}
         self._ssh_data: dict[str, Any] = {}
+        self._prerequisites: dict[str, Any] = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step."""
+        """Handle the initial step - check prerequisites."""
+        # Check voice assistant prerequisites
+        self._prerequisites = check_voice_assistant_prerequisites(self.hass)
+
+        if self._prerequisites["all_ready"]:
+            # All prerequisites met, proceed to Kodi config
+            return await self.async_step_kodi()
+        else:
+            # Show prerequisites warning
+            return await self.async_step_prerequisites_missing()
+
+    async def async_step_prerequisites_missing(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle missing prerequisites - show warning."""
+        if user_input is not None:
+            # User chose to continue anyway
+            if user_input.get("continue_anyway"):
+                return await self.async_step_kodi()
+            # Otherwise, abort
+            return self.async_abort(reason="prerequisites_not_met")
+
+        # Build description placeholders based on what's missing
+        missing_items = []
+        if not self._prerequisites["stt_available"]:
+            missing_items.append("Speech-to-Text (Whisper)")
+        if not self._prerequisites["assist_available"]:
+            missing_items.append("Assist Pipeline")
+
+        return self.async_show_form(
+            step_id="prerequisites_missing",
+            data_schema=vol.Schema({
+                vol.Required("continue_anyway", default=False): bool,
+            }),
+            description_placeholders={
+                "missing_items": ", ".join(missing_items),
+                "stt_status": "✓ Found" if self._prerequisites["stt_available"] else "✗ Not found",
+                "stt_provider": self._prerequisites["stt_provider"] or "None",
+                "assist_status": "✓ Found" if self._prerequisites["assist_available"] else "✗ Not found",
+                "pipeline_count": str(self._prerequisites["pipeline_count"]),
+            },
+        )
+
+    async def async_step_kodi(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle Kodi connection configuration."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -352,8 +448,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            step_id="kodi",
+            data_schema=STEP_KODI_DATA_SCHEMA,
             errors=errors,
             description_placeholders={
                 "window_id_help": "Arctic Fuse 2 uses 11185 for search"
@@ -415,8 +511,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Restart Kodi and wait for it to come back."""
-        errors: dict[str, str] = {}
-
         # Restart Kodi via SSH
         restart_success = await restart_kodi_via_ssh(
             host=self._kodi_data[CONF_KODI_HOST],

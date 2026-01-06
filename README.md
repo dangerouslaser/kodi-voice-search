@@ -31,11 +31,35 @@ Since Kodi's JSON-RPC API doesn't support opening custom skin windows directly (
 - Home Assistant 2024.1.0 or newer
 - Kodi with JSON-RPC enabled
 - A compatible skin (tested with Arctic Fuse 2)
-- Whisper STT container (for speech-to-text)
+- Whisper STT and Assist Pipeline (see prerequisites below)
 
 ## Installation
 
-### Part 1: Home Assistant Integration (HACS)
+### Part 1: Voice Assistant Prerequisites
+
+Before installing this integration, you need a working voice assistant in Home Assistant. The integration will check for these prerequisites and guide you if they're missing.
+
+#### Install Wyoming Whisper (Speech-to-Text)
+
+1. Go to **Settings → Add-ons → Add-on Store**
+2. Search for "Whisper" and install **Wyoming Whisper**
+3. Start the add-on and wait for it to download the model
+4. Go to **Settings → Integrations**
+5. Click **Add Integration** and search for "Wyoming Protocol"
+6. Enter the Whisper add-on address (usually `homeassistant.local:10300`)
+
+#### Create an Assist Pipeline
+
+1. Go to **Settings → Voice Assistants**
+2. Click **Add Assistant**
+3. Configure:
+   - **Name**: "Kodi Voice" (or any name)
+   - **Language**: English
+   - **Speech-to-Text**: Select your Whisper instance
+   - **Text-to-Speech**: Optional (for voice responses)
+4. Click **Create**
+
+### Part 2: Home Assistant Integration (HACS)
 
 1. Open HACS in Home Assistant
 2. Click the three dots menu → **Custom repositories**
@@ -45,18 +69,19 @@ Since Kodi's JSON-RPC API doesn't support opening custom skin windows directly (
 6. Search for "Kodi Voice Search" and install it
 7. Restart Home Assistant
 
-### Part 2: Configure the Integration
+### Part 3: Configure the Integration
 
 1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for "Kodi Voice Search"
-3. Enter your Kodi details:
+3. The integration will check for voice assistant prerequisites
+4. Enter your Kodi details:
    - **IP Address**: Your Kodi device IP
    - **Port**: 8080 (default)
    - **Username**: kodi (default)
    - **Password**: kodi (default)
    - **Window ID**: 11185 (for Arctic Fuse 2 search)
 
-### Part 3: Kodi Addon Installation
+### Part 4: Kodi Addon Installation
 
 The integration requires a small helper addon (`script.openwindow`) on your Kodi device.
 
@@ -255,7 +280,7 @@ rest_command:
                   "params": {"info": "search", "tmdb_type": "multi", "query": "{{ text }}"}}, "id": 1}
 ```
 
-## Part 4: Unfolded Circle Remote 3 Setup
+## Part 5: Unfolded Circle Remote 3 Setup
 
 This is the primary use case for this integration. The UC Remote 3's built-in microphone sends voice commands to Home Assistant.
 
