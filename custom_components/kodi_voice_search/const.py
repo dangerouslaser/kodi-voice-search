@@ -32,6 +32,7 @@ AF2_DISCOVER_WINDOW = "11105"
 
 KODI_ADDON_ID = "script.openwindow"
 KODI_ADDON_PATH = "/storage/.kodi/addons/script.openwindow"
+KODI_ADDON_VERSION = "1.1.0"
 
 # Addon file contents
 ADDON_XML = '''<?xml version="1.0" encoding="UTF-8"?>

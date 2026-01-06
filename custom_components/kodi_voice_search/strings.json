@@ -26,6 +26,13 @@
           "install_method": "Installation method"
         }
       },
+      "addon_update": {
+        "title": "Kodi Addon Update Available",
+        "description": "The script.openwindow addon needs to be updated.\n\n**Installed version:** {installed_version}\n**Required version:** {required_version}\n\nWould you like to automatically update it via SSH?",
+        "data": {
+          "install_method": "Update method"
+        }
+      },
       "ssh_install": {
         "title": "SSH Auto-Install",
         "description": "Enter SSH credentials for your Kodi device. For CoreELEC/LibreELEC, the default is root with no password.",

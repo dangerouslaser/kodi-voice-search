@@ -34,6 +34,7 @@ from .const import (
     DEFAULT_SSH_USERNAME,
     KODI_ADDON_ID,
     KODI_ADDON_PATH,
+    KODI_ADDON_VERSION,
     ADDON_XML,
     ADDON_PY,
 )
@@ -158,8 +159,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         _LOGGER.error("Unexpected error: %s", err)
         raise CannotConnect from err
 
-    # Check if addon is installed
-    addon_installed = await check_addon_installed(
+    # Check addon status (installed and version)
+    addon_status = await check_addon_status(
         data[CONF_KODI_HOST],
         data[CONF_KODI_PORT],
         data[CONF_KODI_USERNAME],
@@ -168,7 +169,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     return {
         "title": f"Kodi ({data[CONF_KODI_HOST]})",
-        "addon_installed": addon_installed,
+        "addon_installed": addon_status["installed"],
+        "addon_needs_update": addon_status["needs_update"],
+        "addon_version": addon_status["version"],
     }
 
 
@@ -193,14 +196,23 @@ async def ping_kodi(host: str, port: int, username: str, password: str) -> bool:
         return False
 
 
-async def check_addon_installed(host: str, port: int, username: str, password: str) -> bool:
-    """Check if the helper addon is installed on Kodi."""
+async def check_addon_status(host: str, port: int, username: str, password: str) -> dict:
+    """Check addon installation status and version.
+
+    Returns dict with:
+        - installed: bool
+        - version: str or None
+        - needs_update: bool
+    """
     url = f"http://{host}:{port}/jsonrpc"
 
     payload = {
         "jsonrpc": "2.0",
         "method": "Addons.GetAddonDetails",
-        "params": {"addonid": KODI_ADDON_ID},
+        "params": {
+            "addonid": KODI_ADDON_ID,
+            "properties": ["version"]
+        },
         "id": 1
     }
 
@@ -216,9 +228,53 @@ async def check_addon_installed(host: str, port: int, username: str, password: s
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 result = await response.json()
-                return "error" not in result
-    except Exception:
-        return False
+                if "error" in result:
+                    return {"installed": False, "version": None, "needs_update": False}
+
+                addon = result.get("result", {}).get("addon", {})
+                installed_version = addon.get("version", "0.0.0")
+                needs_update = _version_compare(installed_version, KODI_ADDON_VERSION) < 0
+
+                _LOGGER.debug(
+                    "Addon status: installed=%s, version=%s, required=%s, needs_update=%s",
+                    True, installed_version, KODI_ADDON_VERSION, needs_update
+                )
+
+                return {
+                    "installed": True,
+                    "version": installed_version,
+                    "needs_update": needs_update
+                }
+    except Exception as err:
+        _LOGGER.error("Failed to check addon status: %s", err)
+        return {"installed": False, "version": None, "needs_update": False}
+
+
+def _version_compare(v1: str, v2: str) -> int:
+    """Compare two version strings. Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2."""
+    def normalize(v):
+        return [int(x) for x in v.split(".")]
+
+    n1, n2 = normalize(v1), normalize(v2)
+
+    # Pad shorter version with zeros
+    while len(n1) < len(n2):
+        n1.append(0)
+    while len(n2) < len(n1):
+        n2.append(0)
+
+    for a, b in zip(n1, n2):
+        if a < b:
+            return -1
+        if a > b:
+            return 1
+    return 0
+
+
+async def check_addon_installed(host: str, port: int, username: str, password: str) -> bool:
+    """Check if the helper addon is installed on Kodi (legacy wrapper)."""
+    status = await check_addon_status(host, port, username, password)
+    return status["installed"]
 
 
 async def enable_addon(host: str, port: int, username: str, password: str) -> bool:
@@ -388,6 +444,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._ssh_data: dict[str, Any] = {}
         self._prerequisites: dict[str, Any] = {}
         self._available_pipelines: dict[str, str] = {}
+        self._addon_version: str | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -456,10 +513,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 # Store Kodi config for later
                 self._kodi_data = user_input
+                self._addon_version = info.get("addon_version")
 
                 # If addon is not installed, offer to install it
                 if not info["addon_installed"]:
                     return await self.async_step_addon_missing()
+
+                # If addon needs update, offer to update it
+                if info["addon_needs_update"]:
+                    return await self.async_step_addon_update()
 
                 return await self._finish_setup()
 
@@ -485,6 +547,26 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="addon_missing",
             data_schema=STEP_ADDON_MISSING_SCHEMA,
+        )
+
+    async def async_step_addon_update(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle the addon update step - addon installed but outdated."""
+        if user_input is not None:
+            if user_input.get("install_method") == INSTALL_METHOD_AUTO:
+                return await self.async_step_ssh_install()
+            else:
+                # User chose to skip update
+                return await self._finish_setup()
+
+        return self.async_show_form(
+            step_id="addon_update",
+            data_schema=STEP_ADDON_MISSING_SCHEMA,
+            description_placeholders={
+                "installed_version": self._addon_version or "unknown",
+                "required_version": KODI_ADDON_VERSION,
+            },
         )
 
     async def async_step_ssh_install(
