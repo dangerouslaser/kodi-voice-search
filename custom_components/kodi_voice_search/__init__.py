@@ -317,8 +317,8 @@ async def _navigate_to_content(
     if content_type == "tvshow":
         path = f"videodb://tvshows/titles/{content_id}/"
     elif content_type == "movie":
-        # Movies use a different path structure
-        path = f"videodb://movies/titles/{content_id}/"
+        # Movies don't have a "titles" subfolder like TV shows
+        path = f"videodb://movies/{content_id}/"
     else:
         return False
 
