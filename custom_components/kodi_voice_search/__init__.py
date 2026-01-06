@@ -197,41 +197,40 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
     """Execute search on Kodi.
 
     Flow:
-    1. Set CustomSearchTerm property and open search window via addon
-    2. Wait for skin to populate the text field (~1.5 seconds)
-    3. Send "select" action to trigger the search
+    1. Open search window via GUI.ActivateWindow
+    2. Small delay for window to load
+    3. Call script.skinvariables to set search text and focus results
     """
     config = hass.data[DOMAIN][entry_id]
 
     url = f"http://{config['host']}:{config['port']}/jsonrpc"
+    auth = aiohttp.BasicAuth(config['username'], config['password'])
 
-    # Step 1: Open search window with search term
-    payload = {
+    # Step 1: Open search window
+    open_payload = {
         "jsonrpc": "2.0",
-        "method": "Addons.ExecuteAddon",
+        "method": "GUI.ActivateWindow",
         "params": {
-            "addonid": KODI_ADDON_ID,
-            "params": f"window={config['window_id']}&search={query}"
+            "window": "custom",
+            "parameters": [config['window_id']]
         },
         "id": 1
     }
-
-    auth = aiohttp.BasicAuth(config['username'], config['password'])
 
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 url,
-                json=payload,
+                json=open_payload,
                 auth=auth,
                 headers={"Content-Type": "application/json"},
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 result = await response.json()
                 if "error" in result:
-                    _LOGGER.error("Kodi error: %s", result["error"])
+                    _LOGGER.error("Kodi error opening window: %s", result["error"])
                     return False
-                _LOGGER.debug("Kodi search window opened: %s", query)
+                _LOGGER.debug("Kodi search window opened")
     except aiohttp.ClientError as err:
         _LOGGER.error("Error communicating with Kodi: %s", err)
         return False
@@ -239,11 +238,23 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
         _LOGGER.error("Timeout communicating with Kodi")
         return False
 
-    # Step 2: Send "left" navigation to move focus and trigger search
-    left_payload = {
+    # Step 2: Small delay for window to fully load
+    await asyncio.sleep(0.3)
+
+    # Step 3: Call script.skinvariables to set search text and focus results
+    # This bypasses the skin's AlarmClock and sets text directly
+    skinvars_payload = {
         "jsonrpc": "2.0",
-        "method": "Input.ExecuteAction",
-        "params": {"action": "left"},
+        "method": "Addons.ExecuteAddon",
+        "params": {
+            "addonid": "script.skinvariables",
+            "params": {
+                "set_editcontrol": "9099",
+                "window_id": config['window_id'],
+                "setfocus": "5000",
+                "text": query
+            }
+        },
         "id": 1
     }
 
@@ -251,22 +262,22 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 url,
-                json=left_payload,
+                json=skinvars_payload,
                 auth=auth,
                 headers={"Content-Type": "application/json"},
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 result = await response.json()
                 if "error" in result:
-                    _LOGGER.error("Kodi error triggering search: %s", result["error"])
+                    _LOGGER.error("Kodi error setting search text: %s", result["error"])
                     return False
-                _LOGGER.debug("Kodi search triggered: %s", query)
+                _LOGGER.debug("Kodi search executed: %s", query)
                 return True
     except aiohttp.ClientError as err:
-        _LOGGER.error("Error triggering Kodi search: %s", err)
+        _LOGGER.error("Error setting Kodi search text: %s", err)
         return False
     except asyncio.TimeoutError:
-        _LOGGER.error("Timeout triggering Kodi search")
+        _LOGGER.error("Timeout setting Kodi search text")
         return False
 
 
