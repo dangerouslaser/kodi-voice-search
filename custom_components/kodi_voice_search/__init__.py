@@ -197,7 +197,7 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
     """Execute search on Kodi.
 
     Flow:
-    1. Open search window via GUI.ActivateWindow
+    1. Open search window via our addon (which works reliably)
     2. Small delay for window to load
     3. Call script.skinvariables to set search text and focus results
     """
@@ -206,13 +206,13 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
     url = f"http://{config['host']}:{config['port']}/jsonrpc"
     auth = aiohttp.BasicAuth(config['username'], config['password'])
 
-    # Step 1: Open search window
+    # Step 1: Open search window via our addon (don't set search term yet)
     open_payload = {
         "jsonrpc": "2.0",
-        "method": "GUI.ActivateWindow",
+        "method": "Addons.ExecuteAddon",
         "params": {
-            "window": "custom",
-            "parameters": [config['window_id']]
+            "addonid": KODI_ADDON_ID,
+            "params": f"window={config['window_id']}"
         },
         "id": 1
     }
@@ -239,11 +239,10 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
         return False
 
     # Step 2: Small delay for window to fully load
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(0.5)
 
     # Step 3: Call script.skinvariables to set search text and focus results
     # This bypasses the skin's AlarmClock and sets text directly
-    # Params must be passed as a string with comma-separated key=value pairs
     skinvars_payload = {
         "jsonrpc": "2.0",
         "method": "Addons.ExecuteAddon",
