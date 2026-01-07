@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
+from urllib.parse import quote
 
 import aiohttp
 import asyncio
@@ -12,7 +12,6 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import intent
-from datetime import datetime
 
 from .const import (
     DOMAIN,
@@ -31,9 +30,6 @@ from .const import (
     DEFAULT_WINDOW_ID,
     DEFAULT_SEARCH_METHOD,
     SEARCH_METHOD_SKIN,
-    SEARCH_METHOD_DEFAULT,
-    SEARCH_METHOD_GLOBAL,
-    GLOBAL_SEARCH_ADDON_ID,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -91,6 +87,76 @@ def _get_most_recent_pipeline_id(hass: HomeAssistant) -> str | None:
     except Exception as err:
         _LOGGER.debug("Error accessing pipeline debug data: %s", err)
         return None
+
+
+def _find_kodi_entry(hass: HomeAssistant, conversation_agent_id: str | None) -> str | None:
+    """Find the appropriate Kodi entry based on pipeline routing.
+
+    Routing logic:
+    1. Try to get the actual pipeline_id from assist_pipeline debug data
+    2. If pipeline_id matches a configured entry, use that entry
+    3. Otherwise, use an entry with no pipeline_id (default)
+    4. If no default, use the first configured entry
+    """
+    entries = hass.data.get(DOMAIN, {})
+    if not entries:
+        return None
+
+    # Get the actual pipeline_id from assist_pipeline debug data
+    actual_pipeline_id = _get_most_recent_pipeline_id(hass)
+    _LOGGER.debug("Actual pipeline_id from debug data: %s", actual_pipeline_id)
+
+    default_entry_id = None
+    first_entry_id = None
+
+    for entry_id, config in entries.items():
+        if first_entry_id is None:
+            first_entry_id = entry_id
+
+        configured_pipeline_id = config.get("pipeline_id")
+        _LOGGER.debug(
+            "Entry %s: host=%s, pipeline_id=%s (looking for: %s)",
+            entry_id, config.get("host"), configured_pipeline_id, actual_pipeline_id
+        )
+
+        # Check if this entry matches the actual pipeline
+        if actual_pipeline_id and configured_pipeline_id == actual_pipeline_id:
+            _LOGGER.debug(
+                "Routing to Kodi entry %s (matched pipeline %s)",
+                entry_id,
+                configured_pipeline_id,
+            )
+            return entry_id
+
+        # Track entry without pipeline_id as default
+        if not configured_pipeline_id and default_entry_id is None:
+            default_entry_id = entry_id
+
+    # Use default entry if available
+    if default_entry_id:
+        _LOGGER.debug("Routing to default Kodi entry %s", default_entry_id)
+        return default_entry_id
+
+    # Fall back to first entry
+    _LOGGER.debug("Routing to first Kodi entry %s", first_entry_id)
+    return first_entry_id
+
+
+def _log_intent_debug(intent_obj: intent.Intent, intent_name: str) -> None:
+    """Log debug information about an intent for troubleshooting pipeline routing."""
+    _LOGGER.debug("=== %s Intent Debug Info ===", intent_name)
+    _LOGGER.debug("conversation_agent_id: %s", getattr(intent_obj, "conversation_agent_id", None))
+    _LOGGER.debug("assistant: %s", getattr(intent_obj, "assistant", None))
+    _LOGGER.debug("device_id: %s", getattr(intent_obj, "device_id", None))
+    _LOGGER.debug("satellite_id: %s", getattr(intent_obj, "satellite_id", None))
+    _LOGGER.debug("platform: %s", getattr(intent_obj, "platform", None))
+    _LOGGER.debug("language: %s", getattr(intent_obj, "language", None))
+    _LOGGER.debug("intent_type: %s", getattr(intent_obj, "intent_type", None))
+    if hasattr(intent_obj, 'context') and intent_obj.context:
+        _LOGGER.debug("context.user_id: %s", getattr(intent_obj.context, "user_id", None))
+        _LOGGER.debug("context.parent_id: %s", getattr(intent_obj.context, "parent_id", None))
+    _LOGGER.debug("=" * (len(intent_name) + 26))
+
 
 SEARCH_SCHEMA = vol.Schema({
     vol.Required(ATTR_QUERY): str,
@@ -290,7 +356,8 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
 
     # Build addon params based on search method
     # The smart addon handles skin detection and focus management
-    addon_params = f"search={query}&method={search_method}"
+    # URL-encode query to handle special characters
+    addon_params = f"search={quote(query, safe='')}&method={search_method}"
 
     # For skin-specific method, also pass window_id as override
     if search_method == SEARCH_METHOD_SKIN and config.get('window_id'):
@@ -431,7 +498,9 @@ async def _navigate_to_content(
         _LOGGER.debug("Movie navigation not supported, using search fallback")
         return False
 
-    return False
+    else:
+        _LOGGER.warning("Unknown content type: %s", content_type)
+        return False
 
 
 async def _execute_pull_up(
@@ -501,19 +570,8 @@ class KodiSearchIntentHandler(intent.IntentHandler):
         # Get the conversation agent ID (pipeline) that triggered this intent
         conversation_agent_id = getattr(intent_obj, "conversation_agent_id", None)
 
-        # Debug: log all potentially useful attributes for pipeline routing
-        _LOGGER.debug("=== Intent Debug Info ===")
-        _LOGGER.debug("conversation_agent_id: %s", conversation_agent_id)
-        _LOGGER.debug("assistant: %s", getattr(intent_obj, "assistant", None))
-        _LOGGER.debug("device_id: %s", getattr(intent_obj, "device_id", None))
-        _LOGGER.debug("satellite_id: %s", getattr(intent_obj, "satellite_id", None))
-        _LOGGER.debug("platform: %s", getattr(intent_obj, "platform", None))
-        _LOGGER.debug("language: %s", getattr(intent_obj, "language", None))
-        _LOGGER.debug("intent_type: %s", getattr(intent_obj, "intent_type", None))
-        if hasattr(intent_obj, 'context') and intent_obj.context:
-            _LOGGER.debug("context.user_id: %s", getattr(intent_obj.context, "user_id", None))
-            _LOGGER.debug("context.parent_id: %s", getattr(intent_obj.context, "parent_id", None))
-        _LOGGER.debug("=========================")
+        # Log debug info for troubleshooting
+        _log_intent_debug(intent_obj, "KodiSearch")
 
         _LOGGER.info(
             "KodiSearch intent triggered with query: %s (agent_id: %s)",
@@ -528,7 +586,7 @@ class KodiSearchIntentHandler(intent.IntentHandler):
 
         # Find the right Kodi entry based on pipeline routing
         if DOMAIN in hass.data and hass.data[DOMAIN]:
-            entry_id = self._find_kodi_entry(hass, conversation_agent_id)
+            entry_id = _find_kodi_entry(hass, conversation_agent_id)
             if entry_id:
                 success = await _execute_search(hass, entry_id, query)
 
@@ -542,58 +600,6 @@ class KodiSearchIntentHandler(intent.IntentHandler):
         response = intent_obj.create_response()
         response.async_set_speech("Kodi Voice Search is not configured")
         return response
-
-    def _find_kodi_entry(self, hass: HomeAssistant, conversation_agent_id: str | None) -> str | None:
-        """Find the appropriate Kodi entry based on pipeline routing.
-
-        Routing logic:
-        1. Try to get the actual pipeline_id from assist_pipeline debug data
-        2. If pipeline_id matches a configured entry, use that entry
-        3. Otherwise, use an entry with no pipeline_id (default)
-        4. If no default, use the first configured entry
-        """
-        entries = hass.data.get(DOMAIN, {})
-        if not entries:
-            return None
-
-        # Get the actual pipeline_id from assist_pipeline debug data
-        actual_pipeline_id = _get_most_recent_pipeline_id(hass)
-        _LOGGER.debug("Actual pipeline_id from debug data: %s", actual_pipeline_id)
-
-        default_entry_id = None
-        first_entry_id = None
-
-        for entry_id, config in entries.items():
-            if first_entry_id is None:
-                first_entry_id = entry_id
-
-            configured_pipeline_id = config.get("pipeline_id")
-            _LOGGER.debug(
-                "Entry %s: host=%s, pipeline_id=%s (looking for: %s)",
-                entry_id, config.get("host"), configured_pipeline_id, actual_pipeline_id
-            )
-
-            # Check if this entry matches the actual pipeline
-            if actual_pipeline_id and configured_pipeline_id == actual_pipeline_id:
-                _LOGGER.debug(
-                    "Routing to Kodi entry %s (matched pipeline %s)",
-                    entry_id,
-                    configured_pipeline_id,
-                )
-                return entry_id
-
-            # Track entry without pipeline_id as default
-            if not configured_pipeline_id and default_entry_id is None:
-                default_entry_id = entry_id
-
-        # Use default entry if available
-        if default_entry_id:
-            _LOGGER.debug("Routing to default Kodi entry %s", default_entry_id)
-            return default_entry_id
-
-        # Fall back to first entry
-        _LOGGER.debug("Routing to first Kodi entry %s", first_entry_id)
-        return first_entry_id
 
 
 class KodiPullUpIntentHandler(intent.IntentHandler):
@@ -611,19 +617,8 @@ class KodiPullUpIntentHandler(intent.IntentHandler):
         # Get the conversation agent ID (pipeline) that triggered this intent
         conversation_agent_id = getattr(intent_obj, "conversation_agent_id", None)
 
-        # Debug: log all potentially useful attributes for pipeline routing
-        _LOGGER.debug("=== PullUp Intent Debug Info ===")
-        _LOGGER.debug("conversation_agent_id: %s", conversation_agent_id)
-        _LOGGER.debug("assistant: %s", getattr(intent_obj, "assistant", None))
-        _LOGGER.debug("device_id: %s", getattr(intent_obj, "device_id", None))
-        _LOGGER.debug("satellite_id: %s", getattr(intent_obj, "satellite_id", None))
-        _LOGGER.debug("platform: %s", getattr(intent_obj, "platform", None))
-        _LOGGER.debug("language: %s", getattr(intent_obj, "language", None))
-        _LOGGER.debug("intent_type: %s", getattr(intent_obj, "intent_type", None))
-        if hasattr(intent_obj, 'context') and intent_obj.context:
-            _LOGGER.debug("context.user_id: %s", getattr(intent_obj.context, "user_id", None))
-            _LOGGER.debug("context.parent_id: %s", getattr(intent_obj.context, "parent_id", None))
-        _LOGGER.debug("================================")
+        # Log debug info for troubleshooting
+        _log_intent_debug(intent_obj, "KodiPullUp")
 
         _LOGGER.info(
             "KodiPullUp intent triggered with query: %s (agent_id: %s)",
@@ -638,7 +633,7 @@ class KodiPullUpIntentHandler(intent.IntentHandler):
 
         # Find the right Kodi entry based on pipeline routing
         if DOMAIN in hass.data and hass.data[DOMAIN]:
-            entry_id = self._find_kodi_entry(hass, conversation_agent_id)
+            entry_id = _find_kodi_entry(hass, conversation_agent_id)
             if entry_id:
                 success, message = await _execute_pull_up(hass, entry_id, query)
 
@@ -649,55 +644,3 @@ class KodiPullUpIntentHandler(intent.IntentHandler):
         response = intent_obj.create_response()
         response.async_set_speech("Kodi Voice Search is not configured")
         return response
-
-    def _find_kodi_entry(self, hass: HomeAssistant, conversation_agent_id: str | None) -> str | None:
-        """Find the appropriate Kodi entry based on pipeline routing.
-
-        Routing logic:
-        1. Try to get the actual pipeline_id from assist_pipeline debug data
-        2. If pipeline_id matches a configured entry, use that entry
-        3. Otherwise, use an entry with no pipeline_id (default)
-        4. If no default, use the first configured entry
-        """
-        entries = hass.data.get(DOMAIN, {})
-        if not entries:
-            return None
-
-        # Get the actual pipeline_id from assist_pipeline debug data
-        actual_pipeline_id = _get_most_recent_pipeline_id(hass)
-        _LOGGER.debug("Actual pipeline_id from debug data: %s", actual_pipeline_id)
-
-        default_entry_id = None
-        first_entry_id = None
-
-        for entry_id, config in entries.items():
-            if first_entry_id is None:
-                first_entry_id = entry_id
-
-            configured_pipeline_id = config.get("pipeline_id")
-            _LOGGER.debug(
-                "Entry %s: host=%s, pipeline_id=%s (looking for: %s)",
-                entry_id, config.get("host"), configured_pipeline_id, actual_pipeline_id
-            )
-
-            # Check if this entry matches the actual pipeline
-            if actual_pipeline_id and configured_pipeline_id == actual_pipeline_id:
-                _LOGGER.debug(
-                    "Routing to Kodi entry %s (matched pipeline %s)",
-                    entry_id,
-                    configured_pipeline_id,
-                )
-                return entry_id
-
-            # Track entry without pipeline_id as default
-            if not configured_pipeline_id and default_entry_id is None:
-                default_entry_id = entry_id
-
-        # Use default entry if available
-        if default_entry_id:
-            _LOGGER.debug("Routing to default Kodi entry %s", default_entry_id)
-            return default_entry_id
-
-        # Fall back to first entry
-        _LOGGER.debug("Routing to first Kodi entry %s", first_entry_id)
-        return first_entry_id

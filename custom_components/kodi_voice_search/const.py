@@ -41,9 +41,6 @@ KODI_ADDON_ID = "script.openwindow"
 KODI_ADDON_PATH = "/storage/.kodi/addons/script.openwindow"
 KODI_ADDON_VERSION = "2.1.1"
 
-# Global Search addon
-GLOBAL_SEARCH_ADDON_ID = "script.globalsearch"
-
 # Addon file contents
 ADDON_XML = '''<?xml version="1.0" encoding="UTF-8"?>
 <addon id="script.openwindow" name="Open Window" version="2.1.1" provider-name="kodi-voice-search">
@@ -60,7 +57,7 @@ ADDON_XML = '''<?xml version="1.0" encoding="UTF-8"?>
 </addon>'''
 
 ADDON_PY = '''"""
-Open Window - Smart Kodi Search Addon v2.1.0
+Open Window - Smart Kodi Search Addon v2.1.1
 Handles search with skin-aware focus management.
 
 For Arctic Fuse 2: Uses script.skinvariables to directly set search text

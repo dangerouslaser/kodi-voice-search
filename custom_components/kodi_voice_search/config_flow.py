@@ -338,10 +338,9 @@ async def install_addon_via_ssh(
             "known_hosts": None,
         }
 
+        # Only set password if provided - omitting lets asyncssh try key-based auth
         if password:
             connect_kwargs["password"] = password
-        else:
-            connect_kwargs["password"] = ""
 
         async with asyncssh.connect(**connect_kwargs) as conn:
             # Create addon directory
@@ -386,10 +385,9 @@ async def restart_kodi_via_ssh(
             "known_hosts": None,
         }
 
+        # Only set password if provided - omitting lets asyncssh try key-based auth
         if password:
             connect_kwargs["password"] = password
-        else:
-            connect_kwargs["password"] = ""
 
         async with asyncssh.connect(**connect_kwargs) as conn:
             result = await conn.run("systemctl restart kodi", check=False)
@@ -521,8 +519,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 info = await validate_input(self.hass, user_input)
             except CannotConnect:
                 errors["base"] = "cannot_connect"
-            except InvalidAuth:
-                errors["base"] = "invalid_auth"
             except Exception:
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -831,50 +827,53 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Manage the options."""
+        errors: dict[str, str] = {}
+
         # Get available pipelines
         available_pipelines = get_pipelines(self.hass)
 
         if user_input is not None:
-            # Merge with existing data
-            new_data = {**self.config_entry.data}
+            # Validate new credentials before saving
+            host = user_input.get(CONF_KODI_HOST, self.config_entry.data.get(CONF_KODI_HOST))
+            port = user_input.get(CONF_KODI_PORT, self.config_entry.data.get(CONF_KODI_PORT, DEFAULT_PORT))
+            username = user_input.get(CONF_KODI_USERNAME, self.config_entry.data.get(CONF_KODI_USERNAME))
+            password = user_input.get(CONF_KODI_PASSWORD, self.config_entry.data.get(CONF_KODI_PASSWORD))
 
-            # Update Kodi connection settings
-            new_data[CONF_KODI_HOST] = user_input.get(
-                CONF_KODI_HOST, self.config_entry.data.get(CONF_KODI_HOST)
-            )
-            new_data[CONF_KODI_PORT] = user_input.get(
-                CONF_KODI_PORT, self.config_entry.data.get(CONF_KODI_PORT, DEFAULT_PORT)
-            )
-            new_data[CONF_KODI_USERNAME] = user_input.get(
-                CONF_KODI_USERNAME, self.config_entry.data.get(CONF_KODI_USERNAME, DEFAULT_USERNAME)
-            )
-            new_data[CONF_KODI_PASSWORD] = user_input.get(
-                CONF_KODI_PASSWORD, self.config_entry.data.get(CONF_KODI_PASSWORD, DEFAULT_PASSWORD)
-            )
-            new_data[CONF_WINDOW_ID] = user_input.get(
-                CONF_WINDOW_ID, self.config_entry.data.get(CONF_WINDOW_ID, DEFAULT_WINDOW_ID)
-            )
-            new_data[CONF_SEARCH_METHOD] = user_input.get(
-                CONF_SEARCH_METHOD, self.config_entry.data.get(CONF_SEARCH_METHOD, DEFAULT_SEARCH_METHOD)
-            )
+            if not await ping_kodi(host, port, username, password):
+                errors["base"] = "cannot_connect"
+            else:
+                # Merge with existing data
+                new_data = {**self.config_entry.data}
 
-            # Handle pipeline selection
-            pipeline_id = user_input.get(CONF_PIPELINE_ID)
-            if pipeline_id and pipeline_id != "_none_":
-                new_data[CONF_PIPELINE_ID] = pipeline_id
-            elif CONF_PIPELINE_ID in new_data:
-                # Remove pipeline if "None" selected
-                if pipeline_id == "_none_":
-                    del new_data[CONF_PIPELINE_ID]
+                # Update Kodi connection settings
+                new_data[CONF_KODI_HOST] = host
+                new_data[CONF_KODI_PORT] = port
+                new_data[CONF_KODI_USERNAME] = username
+                new_data[CONF_KODI_PASSWORD] = password
+                new_data[CONF_WINDOW_ID] = user_input.get(
+                    CONF_WINDOW_ID, self.config_entry.data.get(CONF_WINDOW_ID, DEFAULT_WINDOW_ID)
+                )
+                new_data[CONF_SEARCH_METHOD] = user_input.get(
+                    CONF_SEARCH_METHOD, self.config_entry.data.get(CONF_SEARCH_METHOD, DEFAULT_SEARCH_METHOD)
+                )
 
-            # Update the config entry data
-            self.hass.config_entries.async_update_entry(
-                self.config_entry,
-                data=new_data,
-                title=f"Kodi ({new_data[CONF_KODI_HOST]})",
-            )
+                # Handle pipeline selection
+                pipeline_id = user_input.get(CONF_PIPELINE_ID)
+                if pipeline_id and pipeline_id != "_none_":
+                    new_data[CONF_PIPELINE_ID] = pipeline_id
+                elif CONF_PIPELINE_ID in new_data:
+                    # Remove pipeline if "None" selected
+                    if pipeline_id == "_none_":
+                        del new_data[CONF_PIPELINE_ID]
 
-            return self.async_create_entry(title="", data={})
+                # Update the config entry data
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data=new_data,
+                    title=f"Kodi ({new_data[CONF_KODI_HOST]})",
+                )
+
+                return self.async_create_entry(title="", data={})
 
         # Build pipeline options
         pipeline_options = {"_none_": "None (use as default)"}
@@ -916,15 +915,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     default=current_pipeline if current_pipeline else "_none_"
                 ): vol.In(pipeline_options),
             }),
+            errors=errors,
         )
 
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
-
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate there is invalid auth."""
 
 
 class SSHFailed(HomeAssistantError):
