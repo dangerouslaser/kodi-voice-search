@@ -92,6 +92,23 @@
       "addon_up_to_date": "Kodi addon is already up to date (version {installed_version})."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure Kodi Voice Search",
+        "description": "Update your Kodi connection and search settings.",
+        "data": {
+          "kodi_host": "Kodi IP Address",
+          "kodi_port": "Kodi Port",
+          "kodi_username": "Username",
+          "kodi_password": "Password",
+          "window_id": "Search Window ID",
+          "search_method": "Search Method",
+          "pipeline_id": "Voice Assistant Pipeline"
+        }
+      }
+    }
+  },
   "services": {
     "search": {
       "name": "Search",

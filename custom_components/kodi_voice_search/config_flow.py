@@ -455,6 +455,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._available_pipelines: dict[str, str] = {}
         self._addon_version: str | None = None
 
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Get the options flow for this handler."""
+        return OptionsFlowHandler(config_entry)
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -810,6 +817,106 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_abort(
             reason="addon_up_to_date",
             description_placeholders={"installed_version": self._addon_version or "unknown"},
+        )
+
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for Kodi Voice Search."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+        self._available_pipelines: dict[str, str] = {}
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        # Get available pipelines
+        self._available_pipelines = get_pipelines(self.hass)
+
+        if user_input is not None:
+            # Merge with existing data
+            new_data = {**self.config_entry.data}
+
+            # Update Kodi connection settings
+            new_data[CONF_KODI_HOST] = user_input.get(
+                CONF_KODI_HOST, self.config_entry.data.get(CONF_KODI_HOST)
+            )
+            new_data[CONF_KODI_PORT] = user_input.get(
+                CONF_KODI_PORT, self.config_entry.data.get(CONF_KODI_PORT, DEFAULT_PORT)
+            )
+            new_data[CONF_KODI_USERNAME] = user_input.get(
+                CONF_KODI_USERNAME, self.config_entry.data.get(CONF_KODI_USERNAME, DEFAULT_USERNAME)
+            )
+            new_data[CONF_KODI_PASSWORD] = user_input.get(
+                CONF_KODI_PASSWORD, self.config_entry.data.get(CONF_KODI_PASSWORD, DEFAULT_PASSWORD)
+            )
+            new_data[CONF_WINDOW_ID] = user_input.get(
+                CONF_WINDOW_ID, self.config_entry.data.get(CONF_WINDOW_ID, DEFAULT_WINDOW_ID)
+            )
+            new_data[CONF_SEARCH_METHOD] = user_input.get(
+                CONF_SEARCH_METHOD, self.config_entry.data.get(CONF_SEARCH_METHOD, DEFAULT_SEARCH_METHOD)
+            )
+
+            # Handle pipeline selection
+            pipeline_id = user_input.get(CONF_PIPELINE_ID)
+            if pipeline_id and pipeline_id != "_none_":
+                new_data[CONF_PIPELINE_ID] = pipeline_id
+            elif CONF_PIPELINE_ID in new_data:
+                # Remove pipeline if "None" selected
+                if pipeline_id == "_none_":
+                    del new_data[CONF_PIPELINE_ID]
+
+            # Update the config entry data
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data=new_data,
+                title=f"Kodi ({new_data[CONF_KODI_HOST]})",
+            )
+
+            return self.async_create_entry(title="", data={})
+
+        # Build pipeline options
+        pipeline_options = {"_none_": "None (use as default)"}
+        pipeline_options.update(self._available_pipelines)
+
+        # Get current values for defaults
+        current_data = self.config_entry.data
+        current_pipeline = current_data.get(CONF_PIPELINE_ID, "_none_")
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Required(
+                    CONF_KODI_HOST,
+                    default=current_data.get(CONF_KODI_HOST, "")
+                ): str,
+                vol.Required(
+                    CONF_KODI_PORT,
+                    default=current_data.get(CONF_KODI_PORT, DEFAULT_PORT)
+                ): int,
+                vol.Required(
+                    CONF_KODI_USERNAME,
+                    default=current_data.get(CONF_KODI_USERNAME, DEFAULT_USERNAME)
+                ): str,
+                vol.Required(
+                    CONF_KODI_PASSWORD,
+                    default=current_data.get(CONF_KODI_PASSWORD, DEFAULT_PASSWORD)
+                ): str,
+                vol.Required(
+                    CONF_WINDOW_ID,
+                    default=current_data.get(CONF_WINDOW_ID, DEFAULT_WINDOW_ID)
+                ): str,
+                vol.Required(
+                    CONF_SEARCH_METHOD,
+                    default=current_data.get(CONF_SEARCH_METHOD, DEFAULT_SEARCH_METHOD)
+                ): vol.In(SEARCH_METHOD_OPTIONS),
+                vol.Required(
+                    CONF_PIPELINE_ID,
+                    default=current_pipeline if current_pipeline else "_none_"
+                ): vol.In(pipeline_options),
+            }),
         )
 
 

@@ -167,6 +167,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Kodi Voice Search from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
+    # Register update listener to reload when options change
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
+
     config = entry.data
     host = config[CONF_KODI_HOST]
     port = config[CONF_KODI_PORT]
@@ -269,6 +272,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_remove(DOMAIN, SERVICE_PULL_UP)
     hass.data[DOMAIN].pop(entry.entry_id)
     return True
+
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle options update - reload the integration."""
+    _LOGGER.info("Options updated for %s, reloading integration", entry.title)
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> bool:
