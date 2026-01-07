@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from urllib.parse import quote
 
 import aiohttp
 import asyncio
@@ -351,8 +350,7 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
 
     # Build addon params based on search method
     # The smart addon handles skin detection and focus management
-    # URL-encode query to handle special characters
-    addon_params = f"search={quote(query, safe='')}&method={search_method}"
+    addon_params = f"search={query}&method={search_method}"
 
     payload = {
         "jsonrpc": "2.0",
