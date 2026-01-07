@@ -460,7 +460,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
         """Get the options flow for this handler."""
-        return OptionsFlowHandler(config_entry)
+        return OptionsFlowHandler()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -823,17 +823,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for Kodi Voice Search."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+    def __init__(self) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
-        self._available_pipelines: dict[str, str] = {}
+        super().__init__()
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Manage the options."""
         # Get available pipelines
-        self._available_pipelines = get_pipelines(self.hass)
+        available_pipelines = get_pipelines(self.hass)
 
         if user_input is not None:
             # Merge with existing data
@@ -879,7 +878,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
         # Build pipeline options
         pipeline_options = {"_none_": "None (use as default)"}
-        pipeline_options.update(self._available_pipelines)
+        pipeline_options.update(available_pipelines)
 
         # Get current values for defaults
         current_data = self.config_entry.data
