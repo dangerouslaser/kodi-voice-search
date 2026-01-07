@@ -405,11 +405,19 @@ class KodiSearchIntentHandler(intent.IntentHandler):
         # Get the conversation agent ID (pipeline) that triggered this intent
         conversation_agent_id = getattr(intent_obj, "conversation_agent_id", None)
 
-        # Debug: log all attributes on intent_obj to find pipeline info
-        _LOGGER.debug("Intent object attributes: %s", dir(intent_obj))
-        _LOGGER.debug("Intent context: %s", intent_obj.context)
+        # Debug: log all potentially useful attributes for pipeline routing
+        _LOGGER.debug("=== Intent Debug Info ===")
+        _LOGGER.debug("conversation_agent_id: %s", conversation_agent_id)
+        _LOGGER.debug("assistant: %s", getattr(intent_obj, "assistant", None))
+        _LOGGER.debug("device_id: %s", getattr(intent_obj, "device_id", None))
+        _LOGGER.debug("satellite_id: %s", getattr(intent_obj, "satellite_id", None))
+        _LOGGER.debug("platform: %s", getattr(intent_obj, "platform", None))
+        _LOGGER.debug("language: %s", getattr(intent_obj, "language", None))
+        _LOGGER.debug("intent_type: %s", getattr(intent_obj, "intent_type", None))
         if hasattr(intent_obj, 'context') and intent_obj.context:
-            _LOGGER.debug("Context attributes: %s", vars(intent_obj.context) if hasattr(intent_obj.context, '__dict__') else intent_obj.context)
+            _LOGGER.debug("context.user_id: %s", getattr(intent_obj.context, "user_id", None))
+            _LOGGER.debug("context.parent_id: %s", getattr(intent_obj.context, "parent_id", None))
+        _LOGGER.debug("=========================")
 
         _LOGGER.info(
             "KodiSearch intent triggered with query: %s (agent_id: %s)",
