@@ -502,6 +502,12 @@ class KodiPullUpIntentHandler(intent.IntentHandler):
         # Get the conversation agent ID (pipeline) that triggered this intent
         conversation_agent_id = getattr(intent_obj, "conversation_agent_id", None)
 
+        # Debug: log all attributes on intent_obj to find pipeline info
+        _LOGGER.debug("Intent object attributes: %s", dir(intent_obj))
+        _LOGGER.debug("Intent context: %s", intent_obj.context)
+        if hasattr(intent_obj, 'context') and intent_obj.context:
+            _LOGGER.debug("Context attributes: %s", vars(intent_obj.context) if hasattr(intent_obj.context, '__dict__') else intent_obj.context)
+
         _LOGGER.info(
             "KodiPullUp intent triggered with query: %s (agent_id: %s)",
             query,
