@@ -23,6 +23,7 @@ from .const import (
     CONF_KODI_PASSWORD,
     CONF_WINDOW_ID,
     CONF_PIPELINE_ID,
+    CONF_SEARCH_METHOD,
     CONF_SSH_USERNAME,
     CONF_SSH_PASSWORD,
     CONF_SSH_PORT,
@@ -32,6 +33,10 @@ from .const import (
     DEFAULT_WINDOW_ID,
     DEFAULT_SSH_PORT,
     DEFAULT_SSH_USERNAME,
+    DEFAULT_SEARCH_METHOD,
+    SEARCH_METHOD_SKIN,
+    SEARCH_METHOD_DEFAULT,
+    SEARCH_METHOD_GLOBAL,
     KODI_ADDON_ID,
     KODI_ADDON_PATH,
     KODI_ADDON_VERSION,
@@ -77,6 +82,12 @@ STEP_SSH_INSTALL_SCHEMA = vol.Schema(
         vol.Required(CONF_SSH_PORT, default=DEFAULT_SSH_PORT): int,
     }
 )
+
+SEARCH_METHOD_OPTIONS = {
+    SEARCH_METHOD_SKIN: "Skin-Specific (Arctic Fuse 2, etc.)",
+    SEARCH_METHOD_DEFAULT: "Default Kodi Search",
+    SEARCH_METHOD_GLOBAL: "Global Search Addon",
+}
 
 
 def check_voice_assistant_prerequisites(hass: HomeAssistant) -> dict[str, Any]:
@@ -436,7 +447,7 @@ def get_pipelines(hass: HomeAssistant) -> dict[str, str]:
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Kodi Voice Search."""
 
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -700,24 +711,45 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="addon_confirm")
 
     async def _finish_setup(self) -> FlowResult:
-        """Complete setup - show pipeline selection if multiple pipelines exist."""
+        """Complete setup - show search method and pipeline selection."""
         # Check if this is a reconfigure
         if self.context.get("entry_id"):
             # Reconfigure - just abort with success since addon was updated
             return self.async_abort(reason="reconfigure_successful")
 
-        # If there are multiple pipelines, show selection
-        if len(self._available_pipelines) > 1:
-            return await self.async_step_pipeline()
-        # If only one pipeline, use it automatically
-        elif len(self._available_pipelines) == 1:
-            pipeline_id = next(iter(self._available_pipelines))
-            self._kodi_data[CONF_PIPELINE_ID] = pipeline_id
-        # If no pipelines, leave unset (will use default routing)
+        # Show search method selection step
+        return await self.async_step_search_method()
 
-        return self.async_create_entry(
-            title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
-            data=self._kodi_data,
+    async def async_step_search_method(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle search method selection."""
+        if user_input is not None:
+            self._kodi_data[CONF_SEARCH_METHOD] = user_input.get(
+                CONF_SEARCH_METHOD, DEFAULT_SEARCH_METHOD
+            )
+
+            # If there are multiple pipelines, show pipeline selection
+            if len(self._available_pipelines) > 1:
+                return await self.async_step_pipeline()
+            # If only one pipeline, use it automatically
+            elif len(self._available_pipelines) == 1:
+                pipeline_id = next(iter(self._available_pipelines))
+                self._kodi_data[CONF_PIPELINE_ID] = pipeline_id
+            # If no pipelines, leave unset (will use default routing)
+
+            return self.async_create_entry(
+                title=f"Kodi ({self._kodi_data[CONF_KODI_HOST]})",
+                data=self._kodi_data,
+            )
+
+        return self.async_show_form(
+            step_id="search_method",
+            data_schema=vol.Schema({
+                vol.Required(
+                    CONF_SEARCH_METHOD, default=DEFAULT_SEARCH_METHOD
+                ): vol.In(SEARCH_METHOD_OPTIONS),
+            }),
         )
 
     async def async_step_pipeline(

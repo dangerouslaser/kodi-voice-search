@@ -62,6 +62,13 @@
         "title": "Addon Not Detected",
         "description": "The addon files were installed and Kodi was restarted, but the addon wasn't detected.\n\nThis sometimes happens if Kodi needs another restart. Try restarting Kodi manually:\n```\nsystemctl restart kodi\n```\n\nClick Submit to complete setup."
       },
+      "search_method": {
+        "title": "Search Method",
+        "description": "Choose how voice searches should work with your Kodi skin.\n\n**Skin-Specific:** Best for Arctic Fuse 2 and supported skins. Opens the skin's native search with smart focus management.\n\n**Default Kodi:** Uses Kodi's built-in video search. Works with any skin.\n\n**Global Search:** Uses the script.globalsearch addon for universal search across all content types.",
+        "data": {
+          "search_method": "Search method"
+        }
+      },
       "pipeline": {
         "title": "Voice Assistant Pipeline",
         "description": "Select which Voice Assistant pipeline should route searches to this Kodi instance.\n\nThis is useful if you have multiple Kodi devices - each can be assigned to a different Voice Assistant profile.\n\nSelect \"None\" to make this the default Kodi for all unmatched pipelines.",

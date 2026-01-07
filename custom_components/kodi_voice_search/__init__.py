@@ -22,12 +22,18 @@ from .const import (
     CONF_KODI_PASSWORD,
     CONF_WINDOW_ID,
     CONF_PIPELINE_ID,
+    CONF_SEARCH_METHOD,
     SERVICE_SEARCH,
     SERVICE_PULL_UP,
     ATTR_QUERY,
     ATTR_MEDIA_TYPE,
     KODI_ADDON_ID,
     DEFAULT_WINDOW_ID,
+    DEFAULT_SEARCH_METHOD,
+    SEARCH_METHOD_SKIN,
+    SEARCH_METHOD_DEFAULT,
+    SEARCH_METHOD_GLOBAL,
+    GLOBAL_SEARCH_ADDON_ID,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,7 +42,7 @@ _LOGGER = logging.getLogger(__name__)
 ASSIST_PIPELINE_DOMAIN = "assist_pipeline"
 
 # Current config entry version
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 
 
 def _get_most_recent_pipeline_id(hass: HomeAssistant) -> str | None:
@@ -117,6 +123,22 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             "Reconfigure to assign a specific Voice Assistant pipeline if needed."
         )
 
+    if config_entry.version < 3:
+        # Version 2 -> 3: Add search_method field (default = skin_specific)
+        new_data = {**config_entry.data}
+        new_data[CONF_SEARCH_METHOD] = DEFAULT_SEARCH_METHOD
+
+        hass.config_entries.async_update_entry(
+            config_entry,
+            data=new_data,
+            version=3,
+        )
+        _LOGGER.info(
+            "Migrated Kodi Voice Search config entry to version 3. "
+            "Search method set to 'skin_specific' (default). "
+            "Reconfigure to change search method if needed."
+        )
+
     return True
 
 # Custom sentences content
@@ -155,6 +177,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Get optional pipeline ID for multi-Kodi routing
     pipeline_id = config.get(CONF_PIPELINE_ID)
 
+    # Get search method preference
+    search_method = config.get(CONF_SEARCH_METHOD, DEFAULT_SEARCH_METHOD)
+
     # Store config for later use
     hass.data[DOMAIN][entry.entry_id] = {
         "host": host,
@@ -163,6 +188,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "password": password,
         "window_id": window_id,
         "pipeline_id": pipeline_id,
+        "search_method": search_method,
     }
 
     # Install custom sentences for voice commands
@@ -246,18 +272,27 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> bool:
-    """Execute search on Kodi."""
+    """Execute search on Kodi using the configured search method."""
     config = hass.data[DOMAIN][entry_id]
+    search_method = config.get("search_method", DEFAULT_SEARCH_METHOD)
 
     url = f"http://{config['host']}:{config['port']}/jsonrpc"
-    _LOGGER.debug("Connecting to Kodi at: %s", url)
+    _LOGGER.debug("Connecting to Kodi at: %s (method: %s)", url, search_method)
+
+    # Build addon params based on search method
+    # The smart addon handles skin detection and focus management
+    addon_params = f"search={query}&method={search_method}"
+
+    # For skin-specific method, also pass window_id as override
+    if search_method == SEARCH_METHOD_SKIN and config.get('window_id'):
+        addon_params += f"&window={config['window_id']}"
 
     payload = {
         "jsonrpc": "2.0",
         "method": "Addons.ExecuteAddon",
         "params": {
             "addonid": KODI_ADDON_ID,
-            "params": f"window={config['window_id']}&search={query}"
+            "params": addon_params
         },
         "id": 1
     }
@@ -277,7 +312,7 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
                 if "error" in result:
                     _LOGGER.error("Kodi error: %s", result["error"])
                     return False
-                _LOGGER.debug("Kodi search executed: %s", query)
+                _LOGGER.debug("Kodi search executed: %s (method: %s)", query, search_method)
                 return True
     except aiohttp.ClientError as err:
         _LOGGER.error("Error communicating with Kodi: %s", err)
