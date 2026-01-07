@@ -63,54 +63,51 @@ def wait_for_condition(condition, timeout_ms=5000, poll_ms=100):
 
 
 def execute_af2_search(search_term):
-    """Execute search for Arctic Fuse 2 using direct script.skinvariables call.
+    """Execute search for Arctic Fuse 2 using AF2's native flow.
 
-    This bypasses the CustomSearchTerm -> AlarmClock -> keyboard refocus flow
-    that was causing race conditions. Instead, we:
-    1. Open the search window
-    2. Use script.skinvariables to set text AND focus results directly
-    3. Trigger widget refresh with UpdateSearchRows property
-    4. Wait for results to load
+    Uses CustomSearchTerm to trigger AF2's AlarmClock which populates
+    the search containers via script.skinvariables. We wait for all
+    widgets to load before moving focus to results.
     """
     xbmc.log(f'[script.openwindow] AF2 search starting: {search_term}', xbmc.LOGINFO)
 
-    # Step 1: Open search window (WITHOUT setting CustomSearchTerm)
+    # Step 1: Set CustomSearchTerm - this triggers AF2's normal search flow
+    xbmc.executebuiltin(f'SetProperty(CustomSearchTerm,{search_term},Home)')
+
+    # Step 2: Open search window (let AF2 handle initial focus)
     xbmc.executebuiltin('ActivateWindow(11185)')
 
-    # Step 2: Wait for window to be visible
+    # Step 3: Wait for window to be visible
     if not wait_for_condition('Window.IsVisible(11185)', timeout_ms=3000):
         xbmc.log('[script.openwindow] Timeout waiting for window 11185', xbmc.LOGWARNING)
         return False
 
-    # Small delay to let window fully initialize
-    xbmc.sleep(300)
+    # Step 4: Wait for AF2's AlarmClock to fire and skinvariables to populate containers
+    # AF2's AlarmClock fires after 1 second, then containers need time to update
+    xbmc.sleep(1500)
 
-    # Step 3: Use script.skinvariables to set search text AND focus results
-    # This bypasses the CustomSearchTerm -> AlarmClock -> keyboard refocus flow
-    # setfocus=5001 puts focus on first results row instead of keyboard (9992)
-    skinvariables_cmd = f'RunScript(script.skinvariables,set_editcontrol=9099,window_id=11185,setfocus=5001,text={search_term})'
-    xbmc.executebuiltin(skinvariables_cmd)
-    xbmc.log(f'[script.openwindow] Called script.skinvariables with text: {search_term}', xbmc.LOGINFO)
-
-    # Step 4: Trigger widget refresh
+    # Step 5: Trigger widget refresh to ensure all rows load
     xbmc.executebuiltin('SetProperty(UpdateSearchRows,True,Home)')
 
-    # Step 5: Wait for widgets to load (poll for results)
+    # Step 6: Wait for BOTH movie (5001) and TV show (5002) widgets to have results
     max_wait = 5000
     elapsed = 0
     while elapsed < max_wait:
-        # Check if first widget row has items
-        has_results = xbmc.getCondVisibility('!Integer.IsEqual(Container(5001).NumItems,0)')
-        if has_results:
-            xbmc.log(f'[script.openwindow] Results loaded after {elapsed}ms', xbmc.LOGINFO)
+        movies_ready = xbmc.getCondVisibility('!Integer.IsEqual(Container(5001).NumItems,0)')
+        tvshows_ready = xbmc.getCondVisibility('!Integer.IsEqual(Container(5002).NumItems,0)')
+        # Also check if containers are done updating
+        not_updating = xbmc.getCondVisibility('!Container(5001).IsUpdating + !Container(5002).IsUpdating')
+
+        if (movies_ready or tvshows_ready) and not_updating:
+            xbmc.log(f'[script.openwindow] Results loaded after {elapsed}ms (movies={movies_ready}, tv={tvshows_ready})', xbmc.LOGINFO)
             break
         xbmc.sleep(200)
         elapsed += 200
 
-    # Step 6: Clear UpdateSearchRows
+    # Step 7: Clear UpdateSearchRows
     xbmc.executebuiltin('ClearProperty(UpdateSearchRows,Home)')
 
-    # Ensure focus is on results
+    # Step 8: NOW move focus to results (after everything is loaded)
     xbmc.executebuiltin('SetFocus(5001)')
 
     xbmc.log('[script.openwindow] AF2 search complete', xbmc.LOGINFO)
