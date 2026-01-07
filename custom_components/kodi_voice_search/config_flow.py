@@ -21,7 +21,6 @@ from .const import (
     CONF_KODI_PORT,
     CONF_KODI_USERNAME,
     CONF_KODI_PASSWORD,
-    CONF_WINDOW_ID,
     CONF_PIPELINE_ID,
     CONF_SEARCH_METHOD,
     CONF_SSH_USERNAME,
@@ -30,7 +29,6 @@ from .const import (
     DEFAULT_PORT,
     DEFAULT_USERNAME,
     DEFAULT_PASSWORD,
-    DEFAULT_WINDOW_ID,
     DEFAULT_SSH_PORT,
     DEFAULT_SSH_USERNAME,
     DEFAULT_SEARCH_METHOD,
@@ -57,7 +55,6 @@ STEP_KODI_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_KODI_PORT, default=DEFAULT_PORT): int,
         vol.Required(CONF_KODI_USERNAME, default=DEFAULT_USERNAME): str,
         vol.Required(CONF_KODI_PASSWORD, default=DEFAULT_PASSWORD): str,
-        vol.Required(CONF_WINDOW_ID, default=DEFAULT_WINDOW_ID): str,
     }
 )
 
@@ -541,9 +538,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="kodi",
             data_schema=STEP_KODI_DATA_SCHEMA,
             errors=errors,
-            description_placeholders={
-                "window_id_help": "Arctic Fuse 2 uses 11185 for search"
-            },
         )
 
     async def async_step_addon_missing(
@@ -850,9 +844,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 new_data[CONF_KODI_PORT] = port
                 new_data[CONF_KODI_USERNAME] = username
                 new_data[CONF_KODI_PASSWORD] = password
-                new_data[CONF_WINDOW_ID] = user_input.get(
-                    CONF_WINDOW_ID, self.config_entry.data.get(CONF_WINDOW_ID, DEFAULT_WINDOW_ID)
-                )
                 new_data[CONF_SEARCH_METHOD] = user_input.get(
                     CONF_SEARCH_METHOD, self.config_entry.data.get(CONF_SEARCH_METHOD, DEFAULT_SEARCH_METHOD)
                 )
@@ -901,10 +892,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(
                     CONF_KODI_PASSWORD,
                     default=current_data.get(CONF_KODI_PASSWORD, DEFAULT_PASSWORD)
-                ): str,
-                vol.Required(
-                    CONF_WINDOW_ID,
-                    default=current_data.get(CONF_WINDOW_ID, DEFAULT_WINDOW_ID)
                 ): str,
                 vol.Required(
                     CONF_SEARCH_METHOD,

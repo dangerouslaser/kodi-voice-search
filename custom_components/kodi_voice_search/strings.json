@@ -10,13 +10,12 @@
       },
       "kodi": {
         "title": "Connect to Kodi",
-        "description": "Enter your Kodi connection details. Window ID {window_id_help}.",
+        "description": "Enter your Kodi connection details.",
         "data": {
           "kodi_host": "Kodi IP Address",
           "kodi_port": "Kodi Port",
           "kodi_username": "Username",
-          "kodi_password": "Password",
-          "window_id": "Search Window ID"
+          "kodi_password": "Password"
         }
       },
       "addon_missing": {
@@ -102,7 +101,6 @@
           "kodi_port": "Kodi Port",
           "kodi_username": "Username",
           "kodi_password": "Password",
-          "window_id": "Search Window ID",
           "search_method": "Search Method",
           "pipeline_id": "Voice Assistant Pipeline"
         }

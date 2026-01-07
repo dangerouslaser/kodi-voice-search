@@ -19,7 +19,6 @@ from .const import (
     CONF_KODI_PORT,
     CONF_KODI_USERNAME,
     CONF_KODI_PASSWORD,
-    CONF_WINDOW_ID,
     CONF_PIPELINE_ID,
     CONF_SEARCH_METHOD,
     SERVICE_SEARCH,
@@ -27,9 +26,7 @@ from .const import (
     ATTR_QUERY,
     ATTR_MEDIA_TYPE,
     KODI_ADDON_ID,
-    DEFAULT_WINDOW_ID,
     DEFAULT_SEARCH_METHOD,
-    SEARCH_METHOD_SKIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -241,7 +238,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     port = config[CONF_KODI_PORT]
     username = config[CONF_KODI_USERNAME]
     password = config[CONF_KODI_PASSWORD]
-    window_id = config.get(CONF_WINDOW_ID, DEFAULT_WINDOW_ID)
 
     # Get optional pipeline ID for multi-Kodi routing
     pipeline_id = config.get(CONF_PIPELINE_ID)
@@ -255,7 +251,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "port": port,
         "username": username,
         "password": password,
-        "window_id": window_id,
         "pipeline_id": pipeline_id,
         "search_method": search_method,
     }
@@ -358,10 +353,6 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
     # The smart addon handles skin detection and focus management
     # URL-encode query to handle special characters
     addon_params = f"search={quote(query, safe='')}&method={search_method}"
-
-    # For skin-specific method, also pass window_id as override
-    if search_method == SEARCH_METHOD_SKIN and config.get('window_id'):
-        addon_params += f"&window={config['window_id']}"
 
     payload = {
         "jsonrpc": "2.0",
