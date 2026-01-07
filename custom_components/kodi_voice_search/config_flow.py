@@ -345,19 +345,17 @@ async def install_addon_via_ssh(
 
         async with asyncssh.connect(**connect_kwargs) as conn:
             # Create addon directory
-            await conn.run(f"mkdir -p {KODI_ADDON_PATH}", check=True)
+            await conn.run("mkdir -p " + KODI_ADDON_PATH, check=True)
 
             # Write addon.xml
-            await conn.run(
-                f"cat > {KODI_ADDON_PATH}/addon.xml << 'ADDONXML'\n{ADDON_XML}\nADDONXML",
-                check=True
-            )
+            # Use string concatenation to avoid f-string issues with ADDON content
+            xml_cmd = "cat > " + KODI_ADDON_PATH + "/addon.xml << 'ADDONXML'\n" + ADDON_XML + "\nADDONXML"
+            await conn.run(xml_cmd, check=True)
 
             # Write default.py
-            await conn.run(
-                f"cat > {KODI_ADDON_PATH}/default.py << 'ADDONPY'\n{ADDON_PY}\nADDONPY",
-                check=True
-            )
+            # ADDON_PY contains f-strings with {braces}, so we can't use f-strings here
+            py_cmd = "cat > " + KODI_ADDON_PATH + "/default.py << 'ADDONPY'\n" + ADDON_PY + "\nADDONPY"
+            await conn.run(py_cmd, check=True)
 
             _LOGGER.info("Successfully installed Kodi addon via SSH")
             return True
