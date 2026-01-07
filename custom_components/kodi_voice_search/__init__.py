@@ -453,6 +453,10 @@ class KodiSearchIntentHandler(intent.IntentHandler):
                 first_entry_id = entry_id
 
             pipeline_id = config.get("pipeline_id")
+            _LOGGER.debug(
+                "Entry %s: host=%s, pipeline_id=%s (looking for: %s)",
+                entry_id, config.get("host"), pipeline_id, conversation_agent_id
+            )
 
             # Check if this entry matches the conversation agent
             if conversation_agent_id and pipeline_id == conversation_agent_id:
@@ -537,6 +541,10 @@ class KodiPullUpIntentHandler(intent.IntentHandler):
                 first_entry_id = entry_id
 
             pipeline_id = config.get("pipeline_id")
+            _LOGGER.debug(
+                "Entry %s: host=%s, pipeline_id=%s (looking for: %s)",
+                entry_id, config.get("host"), pipeline_id, conversation_agent_id
+            )
 
             # Check if this entry matches the conversation agent
             if conversation_agent_id and pipeline_id == conversation_agent_id:
