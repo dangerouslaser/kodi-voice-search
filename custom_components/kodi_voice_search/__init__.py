@@ -198,6 +198,7 @@ async def _execute_search(hass: HomeAssistant, entry_id: str, query: str) -> boo
     config = hass.data[DOMAIN][entry_id]
 
     url = f"http://{config['host']}:{config['port']}/jsonrpc"
+    _LOGGER.debug("Connecting to Kodi at: %s", url)
 
     payload = {
         "jsonrpc": "2.0",
