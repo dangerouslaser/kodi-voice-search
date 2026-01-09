@@ -37,30 +37,33 @@ AF2_DISCOVER_WINDOW = "11105"
 
 KODI_ADDON_ID = "script.openwindow"
 KODI_ADDON_PATH = "/storage/.kodi/addons/script.openwindow"
-KODI_ADDON_VERSION = "2.1.1"
+KODI_ADDON_VERSION = "2.2.0"
 
 # Addon file contents
 ADDON_XML = '''<?xml version="1.0" encoding="UTF-8"?>
-<addon id="script.openwindow" name="Open Window" version="2.1.1" provider-name="kodi-voice-search">
+<addon id="script.openwindow" name="Open Window" version="2.2.0" provider-name="kodi-voice-search">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
   </requires>
   <extension point="xbmc.python.script" library="default.py"/>
   <extension point="xbmc.addon.metadata">
     <summary lang="en">Smart search helper for Kodi skins</summary>
-    <description lang="en">A skin-aware helper addon that handles search with proper focus management. Uses script.skinvariables for Arctic Fuse 2 to bypass keyboard focus issues.</description>
+    <description lang="en">A skin-aware helper addon that handles search with proper focus management. Uses script.skinvariables for Arctic Fuse 2/3 to bypass keyboard focus issues.</description>
     <license>MIT</license>
     <platform>all</platform>
   </extension>
 </addon>'''
 
 ADDON_PY = '''"""
-Open Window - Smart Kodi Search Addon v2.1.1
+Open Window - Smart Kodi Search Addon v2.2.0
 Handles search with skin-aware focus management.
 
 For Arctic Fuse 2: Uses script.skinvariables to directly set search text
 and control focus, bypassing the CustomSearchTerm -> AlarmClock -> keyboard
 refocus race condition.
+
+For Arctic Fuse 3: Uses script.skinvariables set_editcontrol to populate
+the search edit control (300) and display results in Hub_Combined_Widget (501).
 
 Supports multiple search methods:
 - skin_specific: Uses skin-specific window and focus handling
@@ -84,6 +87,12 @@ SKIN_CONFIGS = {
         "use_skinvariables": True,  # Use direct script.skinvariables call
         "edit_control": 9099,       # Text input control
         "results_control": 5001,    # First widget row (movies)
+    },
+    "skin.arctic.fuse.3": {
+        "search_window": "11105",
+        "use_skinvariables": True,  # Uses script.skinvariables with set_editcontrol
+        "edit_control": 300,        # Text input control
+        "results_control": 501,     # Hub_Combined_Widget for results
     },
     "skin.estuary": {
         "search_window": "10140",
@@ -170,6 +179,48 @@ def execute_af2_search(search_term):
     return True
 
 
+def execute_af3_search(search_term):
+    """Execute search for Arctic Fuse 3 using script.skinvariables.
+
+    AF3 uses set_editcontrol to directly populate the search edit control (300)
+    and displays results in the Hub_Combined_Widget (501).
+    """
+    xbmc.log(f'[script.openwindow] AF3 search starting: {search_term}', xbmc.LOGINFO)
+
+    # Step 1: Open search window first
+    xbmc.executebuiltin('ActivateWindow(11105)')
+
+    # Step 2: Wait for window to be visible
+    if not wait_for_condition('Window.IsVisible(11105)', timeout_ms=3000):
+        xbmc.log('[script.openwindow] Timeout waiting for window 11105', xbmc.LOGWARNING)
+        return False
+
+    # Step 3: Use script.skinvariables to set the search text in edit control 300
+    xbmc.executebuiltin(f'RunScript(script.skinvariables,set_editcontrol=300&window_id=11105&value={search_term})')
+
+    # Step 4: Wait for skinvariables to process and results to load
+    xbmc.sleep(1500)
+
+    # Step 5: Wait for results container to have items
+    max_wait = 5000
+    elapsed = 0
+    while elapsed < max_wait:
+        results_ready = xbmc.getCondVisibility('!Integer.IsEqual(Container(501).NumItems,0)')
+        not_updating = xbmc.getCondVisibility('!Container(501).IsUpdating')
+
+        if results_ready and not_updating:
+            xbmc.log(f'[script.openwindow] AF3 results loaded after {elapsed}ms', xbmc.LOGINFO)
+            break
+        xbmc.sleep(200)
+        elapsed += 200
+
+    # Step 6: Move focus to results
+    xbmc.executebuiltin('SetFocus(501)')
+
+    xbmc.log('[script.openwindow] AF3 search complete', xbmc.LOGINFO)
+    return True
+
+
 def execute_skin_search(search_term):
     """Execute search using skin-specific logic."""
     config = get_skin_config()
@@ -178,6 +229,10 @@ def execute_skin_search(search_term):
     # Arctic Fuse 2 gets special handling via script.skinvariables
     if skin == "skin.arctic.fuse.2" and config.get("use_skinvariables"):
         return execute_af2_search(search_term)
+
+    # Arctic Fuse 3 uses set_editcontrol with script.skinvariables
+    if skin == "skin.arctic.fuse.3" and config.get("use_skinvariables"):
+        return execute_af3_search(search_term)
 
     # Fallback for other skins - use window activation
     window_id = config.get("search_window")
