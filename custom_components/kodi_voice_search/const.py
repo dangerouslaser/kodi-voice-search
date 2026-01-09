@@ -92,7 +92,7 @@ SKIN_CONFIGS = {
         "search_window": "11105",
         "use_skinvariables": True,  # Uses script.skinvariables with set_editcontrol
         "edit_control": 300,        # Text input control
-        "results_control": 501,     # Hub_Combined_Widget for results
+        "results_control": 601,     # Search results selector
     },
     "skin.estuary": {
         "search_window": "10140",
@@ -182,8 +182,8 @@ def execute_af2_search(search_term):
 def execute_af3_search(search_term):
     """Execute search for Arctic Fuse 3 using script.skinvariables.
 
-    AF3 uses set_editcontrol to directly populate the search edit control (300)
-    and displays results in the Hub_Combined_Widget (501).
+    AF3 uses set_editcontrol to populate edit control 300, which triggers
+    the encoding pipeline (containers 310/320) and populates results in 601.
     """
     xbmc.log(f'[script.openwindow] AF3 search starting: {search_term}', xbmc.LOGINFO)
 
@@ -195,18 +195,34 @@ def execute_af3_search(search_term):
         xbmc.log('[script.openwindow] Timeout waiting for window 11105', xbmc.LOGWARNING)
         return False
 
-    # Step 3: Use script.skinvariables to set the search text in edit control 300
-    xbmc.executebuiltin(f'RunScript(script.skinvariables,set_editcontrol=300&window_id=11105&value={search_term})')
+    # Step 3: Use script.skinvariables to set search text in edit control 300
+    # Note: AF3 uses comma-separated params and 'text=' parameter
+    # Window ID is 1105 internally (11105 is the full custom window ID)
+    xbmc.executebuiltin(f'RunScript(script.skinvariables,set_editcontrol=300,window_id=1105,text={search_term})')
 
-    # Step 4: Wait for skinvariables to process and results to load
-    xbmc.sleep(1500)
+    # Step 4: Wait for encoding containers to process
+    # AF3 uses containers 310 (single-encoded) and 320 (double-encoded)
+    xbmc.sleep(500)
 
-    # Step 5: Wait for results container to have items
     max_wait = 5000
     elapsed = 0
     while elapsed < max_wait:
-        results_ready = xbmc.getCondVisibility('!Integer.IsEqual(Container(501).NumItems,0)')
-        not_updating = xbmc.getCondVisibility('!Container(501).IsUpdating')
+        # Check if encoding containers have finished updating
+        encoding_done = xbmc.getCondVisibility('!Container(310).IsUpdating + !Container(320).IsUpdating')
+        has_encoded = xbmc.getCondVisibility('!String.IsEmpty(Container(310).ListItem.Label)')
+
+        if encoding_done and has_encoded:
+            xbmc.log(f'[script.openwindow] AF3 encoding complete after {elapsed}ms', xbmc.LOGINFO)
+            break
+        xbmc.sleep(200)
+        elapsed += 200
+
+    # Step 5: Wait for results container 601 to populate
+    xbmc.sleep(500)
+    elapsed = 0
+    while elapsed < max_wait:
+        results_ready = xbmc.getCondVisibility('!Integer.IsEqual(Container(601).NumItems,0)')
+        not_updating = xbmc.getCondVisibility('!Container(601).IsUpdating')
 
         if results_ready and not_updating:
             xbmc.log(f'[script.openwindow] AF3 results loaded after {elapsed}ms', xbmc.LOGINFO)
@@ -214,8 +230,8 @@ def execute_af3_search(search_term):
         xbmc.sleep(200)
         elapsed += 200
 
-    # Step 6: Move focus to results
-    xbmc.executebuiltin('SetFocus(501)')
+    # Step 6: Move focus to results selector
+    xbmc.executebuiltin('SetFocus(601)')
 
     xbmc.log('[script.openwindow] AF3 search complete', xbmc.LOGINFO)
     return True
