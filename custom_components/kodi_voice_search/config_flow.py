@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     DOMAIN,
@@ -87,6 +88,39 @@ SEARCH_METHOD_OPTIONS = {
 }
 
 
+async def _kodi_jsonrpc(
+    hass: HomeAssistant,
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    method: str,
+    params: dict | None = None,
+    timeout: int = 10,
+) -> dict | None:
+    """Make a JSON-RPC request to Kodi. Returns parsed result or None on error."""
+    url = f"http://{host}:{port}/jsonrpc"
+    payload: dict[str, Any] = {"jsonrpc": "2.0", "method": method, "id": 1}
+    if params:
+        payload["params"] = params
+
+    auth = aiohttp.BasicAuth(username, password)
+    session = async_get_clientsession(hass)
+
+    try:
+        async with session.post(
+            url,
+            json=payload,
+            auth=auth,
+            headers={"Content-Type": "application/json"},
+            timeout=aiohttp.ClientTimeout(total=timeout),
+        ) as response:
+            return await response.json()
+    except Exception as err:
+        _LOGGER.error("Kodi JSON-RPC %s failed: %s", method, err)
+        return None
+
+
 def check_voice_assistant_prerequisites(hass: HomeAssistant) -> dict[str, Any]:
     """Check if voice assistant prerequisites are met."""
     results = {
@@ -137,38 +171,23 @@ def check_voice_assistant_prerequisites(hass: HomeAssistant) -> dict[str, Any]:
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
-
-    url = f"http://{data[CONF_KODI_HOST]}:{data[CONF_KODI_PORT]}/jsonrpc"
-
-    payload = {
-        "jsonrpc": "2.0",
-        "method": "JSONRPC.Ping",
-        "id": 1
-    }
-
-    auth = aiohttp.BasicAuth(data[CONF_KODI_USERNAME], data[CONF_KODI_PASSWORD])
-
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                url,
-                json=payload,
-                auth=auth,
-                headers={"Content-Type": "application/json"},
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                result = await response.json()
-                if result.get("result") != "pong":
-                    raise CannotConnect
-    except aiohttp.ClientError as err:
-        _LOGGER.error("Cannot connect to Kodi: %s", err)
-        raise CannotConnect from err
+        result = await _kodi_jsonrpc(
+            hass, data[CONF_KODI_HOST], data[CONF_KODI_PORT],
+            data[CONF_KODI_USERNAME], data[CONF_KODI_PASSWORD],
+            "JSONRPC.Ping",
+        )
+        if not result or result.get("result") != "pong":
+            raise CannotConnect
+    except CannotConnect:
+        raise
     except Exception as err:
-        _LOGGER.error("Unexpected error: %s", err)
+        _LOGGER.error("Cannot connect to Kodi: %s", err)
         raise CannotConnect from err
 
     # Check addon status (installed and version)
     addon_status = await check_addon_status(
+        hass,
         data[CONF_KODI_HOST],
         data[CONF_KODI_PORT],
         data[CONF_KODI_USERNAME],
@@ -183,28 +202,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     }
 
 
-async def ping_kodi(host: str, port: int, username: str, password: str) -> bool:
+async def ping_kodi(hass: HomeAssistant, host: str, port: int, username: str, password: str) -> bool:
     """Ping Kodi to check if it's responding."""
-    url = f"http://{host}:{port}/jsonrpc"
-    payload = {"jsonrpc": "2.0", "method": "JSONRPC.Ping", "id": 1}
-    auth = aiohttp.BasicAuth(username, password)
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                url,
-                json=payload,
-                auth=auth,
-                headers={"Content-Type": "application/json"},
-                timeout=aiohttp.ClientTimeout(total=5)
-            ) as response:
-                result = await response.json()
-                return result.get("result") == "pong"
-    except Exception:
-        return False
+    result = await _kodi_jsonrpc(hass, host, port, username, password, "JSONRPC.Ping", timeout=5)
+    return result is not None and result.get("result") == "pong"
 
 
-async def check_addon_status(host: str, port: int, username: str, password: str) -> dict:
+async def check_addon_status(hass: HomeAssistant, host: str, port: int, username: str, password: str) -> dict:
     """Check addon installation status and version.
 
     Returns dict with:
@@ -212,50 +216,29 @@ async def check_addon_status(host: str, port: int, username: str, password: str)
         - version: str or None
         - needs_update: bool
     """
-    url = f"http://{host}:{port}/jsonrpc"
+    result = await _kodi_jsonrpc(
+        hass, host, port, username, password,
+        "Addons.GetAddonDetails",
+        {"addonid": KODI_ADDON_ID, "properties": ["version"]},
+    )
 
-    payload = {
-        "jsonrpc": "2.0",
-        "method": "Addons.GetAddonDetails",
-        "params": {
-            "addonid": KODI_ADDON_ID,
-            "properties": ["version"]
-        },
-        "id": 1
-    }
-
-    auth = aiohttp.BasicAuth(username, password)
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                url,
-                json=payload,
-                auth=auth,
-                headers={"Content-Type": "application/json"},
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                result = await response.json()
-                if "error" in result:
-                    return {"installed": False, "version": None, "needs_update": False}
-
-                addon = result.get("result", {}).get("addon", {})
-                installed_version = addon.get("version", "0.0.0")
-                needs_update = _version_compare(installed_version, KODI_ADDON_VERSION) < 0
-
-                _LOGGER.debug(
-                    "Addon status: installed=%s, version=%s, required=%s, needs_update=%s",
-                    True, installed_version, KODI_ADDON_VERSION, needs_update
-                )
-
-                return {
-                    "installed": True,
-                    "version": installed_version,
-                    "needs_update": needs_update
-                }
-    except Exception as err:
-        _LOGGER.error("Failed to check addon status: %s", err)
+    if not result or "error" in result:
         return {"installed": False, "version": None, "needs_update": False}
+
+    addon = result.get("result", {}).get("addon", {})
+    installed_version = addon.get("version", "0.0.0")
+    needs_update = _version_compare(installed_version, KODI_ADDON_VERSION) < 0
+
+    _LOGGER.debug(
+        "Addon status: installed=%s, version=%s, required=%s, needs_update=%s",
+        True, installed_version, KODI_ADDON_VERSION, needs_update
+    )
+
+    return {
+        "installed": True,
+        "version": installed_version,
+        "needs_update": needs_update,
+    }
 
 
 def _version_compare(v1: str, v2: str) -> int:
@@ -264,60 +247,42 @@ def _version_compare(v1: str, v2: str) -> int:
         return [int(x) for x in v.split(".")]
 
     n1, n2 = normalize(v1), normalize(v2)
-
-    # Pad shorter version with zeros
-    while len(n1) < len(n2):
-        n1.append(0)
-    while len(n2) < len(n1):
-        n2.append(0)
-
-    for a, b in zip(n1, n2):
-        if a < b:
-            return -1
-        if a > b:
-            return 1
-    return 0
+    max_len = max(len(n1), len(n2))
+    t1 = tuple(n1 + [0] * (max_len - len(n1)))
+    t2 = tuple(n2 + [0] * (max_len - len(n2)))
+    return (t1 > t2) - (t1 < t2)
 
 
-async def check_addon_installed(host: str, port: int, username: str, password: str) -> bool:
+async def check_addon_installed(hass: HomeAssistant, host: str, port: int, username: str, password: str) -> bool:
     """Check if the helper addon is installed on Kodi (legacy wrapper)."""
-    status = await check_addon_status(host, port, username, password)
+    status = await check_addon_status(hass, host, port, username, password)
     return status["installed"]
 
 
-async def enable_addon(host: str, port: int, username: str, password: str) -> bool:
+async def enable_addon(hass: HomeAssistant, host: str, port: int, username: str, password: str) -> bool:
     """Enable the addon via JSON-RPC."""
-    url = f"http://{host}:{port}/jsonrpc"
+    result = await _kodi_jsonrpc(
+        hass, host, port, username, password,
+        "Addons.SetAddonEnabled",
+        {"addonid": KODI_ADDON_ID, "enabled": True},
+    )
+    success = result is not None and result.get("result") == "OK"
+    if success:
+        _LOGGER.info("Successfully enabled Kodi addon")
+    return success
 
-    payload = {
-        "jsonrpc": "2.0",
-        "method": "Addons.SetAddonEnabled",
-        "params": {
-            "addonid": KODI_ADDON_ID,
-            "enabled": True
-        },
-        "id": 1
+
+def _ssh_connect_kwargs(host: str, username: str, password: str | None, port: int) -> dict:
+    """Build asyncssh.connect keyword arguments."""
+    kwargs: dict[str, Any] = {
+        "host": host,
+        "port": port,
+        "username": username,
+        "known_hosts": None,
     }
-
-    auth = aiohttp.BasicAuth(username, password)
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                url,
-                json=payload,
-                auth=auth,
-                headers={"Content-Type": "application/json"},
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                result = await response.json()
-                success = result.get("result") == "OK"
-                if success:
-                    _LOGGER.info("Successfully enabled Kodi addon")
-                return success
-    except Exception as err:
-        _LOGGER.error("Failed to enable addon: %s", err)
-        return False
+    if password:
+        kwargs["password"] = password
+    return kwargs
 
 
 async def install_addon_via_ssh(
@@ -328,18 +293,7 @@ async def install_addon_via_ssh(
 ) -> bool:
     """Install the Kodi addon via SSH."""
     try:
-        connect_kwargs = {
-            "host": host,
-            "port": port,
-            "username": username,
-            "known_hosts": None,
-        }
-
-        # Only set password if provided - omitting lets asyncssh try key-based auth
-        if password:
-            connect_kwargs["password"] = password
-
-        async with asyncssh.connect(**connect_kwargs) as conn:
+        async with asyncssh.connect(**_ssh_connect_kwargs(host, username, password, port)) as conn:
             # Create addon directory
             await conn.run("mkdir -p " + KODI_ADDON_PATH, check=True)
 
@@ -375,18 +329,7 @@ async def restart_kodi_via_ssh(
 ) -> bool:
     """Restart Kodi service via SSH."""
     try:
-        connect_kwargs = {
-            "host": host,
-            "port": port,
-            "username": username,
-            "known_hosts": None,
-        }
-
-        # Only set password if provided - omitting lets asyncssh try key-based auth
-        if password:
-            connect_kwargs["password"] = password
-
-        async with asyncssh.connect(**connect_kwargs) as conn:
+        async with asyncssh.connect(**_ssh_connect_kwargs(host, username, password, port)) as conn:
             result = await conn.run("systemctl restart kodi", check=False)
             if result.exit_status == 0:
                 _LOGGER.info("Successfully restarted Kodi via SSH")
@@ -401,6 +344,7 @@ async def restart_kodi_via_ssh(
 
 
 async def wait_for_kodi(
+    hass: HomeAssistant,
     host: str,
     port: int,
     username: str,
@@ -415,7 +359,7 @@ async def wait_for_kodi(
 
     elapsed = 0
     while elapsed < timeout:
-        if await ping_kodi(host, port, username, password):
+        if await ping_kodi(hass, host, port, username, password):
             _LOGGER.info("Kodi is back online after %d seconds", elapsed + KODI_RESTART_WAIT)
             return True
         await asyncio.sleep(KODI_POLL_INTERVAL)
@@ -629,6 +573,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Wait for Kodi to come back online
         kodi_online = await wait_for_kodi(
+            self.hass,
             host=self._kodi_data[CONF_KODI_HOST],
             port=self._kodi_data[CONF_KODI_PORT],
             username=self._kodi_data[CONF_KODI_USERNAME],
@@ -641,6 +586,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Kodi is back, now enable the addon
         await enable_addon(
+            self.hass,
             host=self._kodi_data[CONF_KODI_HOST],
             port=self._kodi_data[CONF_KODI_PORT],
             username=self._kodi_data[CONF_KODI_USERNAME],
@@ -649,6 +595,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Verify addon is now installed and enabled
         addon_ready = await check_addon_installed(
+            self.hass,
             host=self._kodi_data[CONF_KODI_HOST],
             port=self._kodi_data[CONF_KODI_PORT],
             username=self._kodi_data[CONF_KODI_USERNAME],
@@ -789,6 +736,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Check addon status
         addon_status = await check_addon_status(
+            self.hass,
             self._kodi_data[CONF_KODI_HOST],
             self._kodi_data[CONF_KODI_PORT],
             self._kodi_data[CONF_KODI_USERNAME],
@@ -833,7 +781,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             username = user_input.get(CONF_KODI_USERNAME, self.config_entry.data.get(CONF_KODI_USERNAME))
             password = user_input.get(CONF_KODI_PASSWORD, self.config_entry.data.get(CONF_KODI_PASSWORD))
 
-            if not await ping_kodi(host, port, username, password):
+            if not await ping_kodi(self.hass, host, port, username, password):
                 errors["base"] = "cannot_connect"
             else:
                 # Merge with existing data

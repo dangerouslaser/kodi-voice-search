@@ -1,5 +1,5 @@
 """
-Open Window - Smart Kodi Search Addon v2.2.0
+Open Window - Smart Kodi Search Addon v2.3.0
 Handles search with skin-aware focus management.
 
 For Arctic Fuse 2: Uses script.skinvariables to directly set search text
@@ -22,7 +22,6 @@ Usage via JSON-RPC:
 
 import sys
 import xbmc
-import xbmcgui
 
 # Skin configurations
 SKIN_CONFIGS = {
@@ -81,7 +80,7 @@ def execute_af2_search(search_term):
     xbmc.log(f'[script.openwindow] AF2 search starting: {search_term}', xbmc.LOGINFO)
 
     # Step 1: Set CustomSearchTerm - this triggers AF2's normal search flow
-    xbmc.executebuiltin(f'SetProperty(CustomSearchTerm,{search_term},Home)')
+    xbmc.executebuiltin(f'SetProperty(CustomSearchTerm,"{search_term}",Home)')
 
     # Step 2: Open search window (let AF2 handle initial focus)
     xbmc.executebuiltin('ActivateWindow(11185)')
@@ -142,7 +141,7 @@ def execute_af3_search(search_term):
     # Step 3: Use script.skinvariables to set search text in edit control 300
     # Note: AF3 uses comma-separated params and 'text=' parameter
     # Window ID is 1105 internally (11105 is the full custom window ID)
-    xbmc.executebuiltin(f'RunScript(script.skinvariables,set_editcontrol=300,window_id=1105,text={search_term})')
+    xbmc.executebuiltin(f'RunScript(script.skinvariables,"set_editcontrol=300","window_id=1105","text={search_term}")')
 
     # Step 4: Wait for encoding containers to process
     # AF3 uses containers 310 (single-encoded) and 320 (double-encoded)
@@ -203,13 +202,13 @@ def execute_skin_search(search_term):
 
 def execute_default_search(search_term):
     """Execute search using Kodi's built-in search."""
-    xbmc.executebuiltin(f'ActivateWindow(videos,videodb://movies/titles/?search={search_term})')
+    xbmc.executebuiltin(f'ActivateWindow(videos,"videodb://movies/titles/?search={search_term}")')
     xbmc.log(f'[script.openwindow] Default search: {search_term}', xbmc.LOGINFO)
 
 
 def execute_global_search(search_term):
     """Execute search using script.globalsearch addon."""
-    xbmc.executebuiltin(f'RunScript(script.globalsearch,searchstring={search_term})')
+    xbmc.executebuiltin(f'RunScript(script.globalsearch,"searchstring={search_term}")')
     xbmc.log(f'[script.openwindow] Global search: {search_term}', xbmc.LOGINFO)
 
 
@@ -218,8 +217,9 @@ def main():
     search_term = None
     method = "skin_specific"  # Default method
 
-    # Handle both space-separated args and &-separated params
-    all_params = '&'.join(sys.argv[1:]).split('&')
+    # Handle ||| delimited params (joined across argv spaces)
+    raw_params = ' '.join(sys.argv[1:])
+    all_params = raw_params.split('|||')
 
     for arg in all_params:
         if '=' in arg:
